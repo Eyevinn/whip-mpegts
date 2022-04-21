@@ -1,2 +1,11 @@
 cmake-build-*
 .idea
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+mpeg-ts-client
+CMakeScripts/
+build/
+mpeg-ts-client.build/
+mpeg-ts-client.xcodeproj/

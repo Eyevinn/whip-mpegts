@@ -6,6 +6,7 @@
 #include "utils/ScopedGLibMem.h"
 #include "utils/ScopedGLibObject.h"
 #include "utils/ScopedGstObject.h"
+#include <array>
 #include <algorithm>
 #include <atomic>
 #include <gst/gst.h>
@@ -98,7 +99,7 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
 
     makeElement(ElementLabel::MPEG2_PARSE, "MPEG2_PARSE", "mpegvideoparse");
     makeElement(ElementLabel::MPEG2_PARSE_QUEUE, "MPEG2_PARSE_QUEUE", "queue");
-    makeElement(ElementLabel::MPEG2_DECODE, "MPEG2_DECODE", "mpeg2dec");
+    makeElement(ElementLabel::MPEG2_DECODE, "MPEG2_DECODE", "avdec_mpeg2video");
     makeElement(ElementLabel::MPEG2_DECODE_QUEUE, "MPEG2_DECODE_QUEUE", "queue");
 
     makeElement(ElementLabel::RTP_VIDEO_ENCODE, "RTP_VIDEO_ENCODE", "vp8enc");

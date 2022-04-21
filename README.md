@@ -4,14 +4,14 @@ MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an 
 
 ## Getting started
 
-Supported platforms are Ubuntu 21.10.
+Supported platforms are Ubuntu 21.10 and OSX.
 
 ### Ubuntu 21.10
 
 Install dependencies:
 
 ```
-apt-get install libgstreamer1.0-0 gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-plugins-rtp gstreamer1.0-nice libsoup2.4-1 cmake gcc g++ make gdb libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libsoup2.4-dev
+apt-get install libgstreamer1.0-0 gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-libav gstreamer1.0-plugins-rtp gstreamer1.0-nice libsoup2.4-1 cmake gcc g++ make gdb libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libsoup2.4-dev
 ```
 
 Build:
@@ -21,8 +21,32 @@ cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" .
 make
 ```
 
-Usage:
+Run:
 ```
+./mpeg-ts-client <MPEG-TS address> <MPEG-TS port> <WHIP endpoint URL> [WHIP auth key]
+```
+
+### OSX
+
+Requirements:
+
+XCode command line tools installed.
+
+Install additional dependencies using homebrew:
+```
+brew install gstreamer gst-plugins-good gst-plugins-bad libsoup@2 cmake gst-libav
+```
+
+Build:
+
+```
+cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" .
+make
+```
+
+Run:
+```
+export GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0/
 ./mpeg-ts-client <MPEG-TS address> <MPEG-TS port> <WHIP endpoint URL> [WHIP auth key]
 ```
 
