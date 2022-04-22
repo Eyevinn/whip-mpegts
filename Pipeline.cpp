@@ -6,8 +6,8 @@
 #include "utils/ScopedGLibMem.h"
 #include "utils/ScopedGLibObject.h"
 #include "utils/ScopedGstObject.h"
-#include <array>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <gst/gst.h>
 #include <gst/sdp/sdp.h>
@@ -189,22 +189,6 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
         0,
         nullptr);
 
-    utils::ScopedGstObject rtpVideoFilterCaps(gst_caps_new_simple("application/x-rtp",
-        "media",
-        G_TYPE_STRING,
-        "video",
-        "payload",
-        G_TYPE_INT,
-        96,
-        "encoding-name",
-        G_TYPE_STRING,
-        "VP8",
-        nullptr));
-
-    gst_element_link_filtered(elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
-        elements_[ElementLabel::WEBRTC_BIN],
-        rtpVideoFilterCaps.get());
-
     utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
         "media",
         G_TYPE_STRING,
@@ -220,6 +204,22 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
     gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
         elements_[ElementLabel::WEBRTC_BIN],
         rtpAudioFilterCaps.get());
+
+    utils::ScopedGstObject rtpVideoFilterCaps(gst_caps_new_simple("application/x-rtp",
+        "media",
+        G_TYPE_STRING,
+        "video",
+        "payload",
+        G_TYPE_INT,
+        96,
+        "encoding-name",
+        G_TYPE_STRING,
+        "VP8",
+        nullptr));
+
+    gst_element_link_filtered(elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
+        elements_[ElementLabel::WEBRTC_BIN],
+        rtpVideoFilterCaps.get());
 
     g_object_set(elements_[ElementLabel::WEBRTC_BIN], "name", "send", nullptr);
     gst_element_sync_state_with_parent(elements_[ElementLabel::WEBRTC_BIN]);
@@ -338,6 +338,26 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
 
 void Pipeline::Impl::onNegotiationNeeded()
 {
+    GArray* transceivers;
+    g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "get-transceivers", &transceivers);
+
+    for (uint32_t i = 0; i < transceivers->len; ++i)
+    {
+        auto transceiver = g_array_index(transceivers, GstWebRTCRTPTransceiver*, i);
+        transceiver->direction = GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY;
+        g_object_set(transceiver, "fec-type", GST_WEBRTC_FEC_TYPE_NONE, nullptr);
+    }
+
+    if (transceivers->len == 2)
+    {
+        auto transceiver = g_array_index(transceivers, GstWebRTCRTPTransceiver*, 1);
+        g_object_set(transceiver, "do-nack", TRUE, nullptr);
+    }
+    else
+    {
+        Logger::log("Expected 2 trancievers, but there are %u available. Not enabling NACK/RTX.", transceivers->len);
+    }
+
     auto promise = gst_promise_new_with_change_func(onOfferCreatedCallback, this, nullptr);
     g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "create-offer", nullptr, promise);
 }
@@ -436,9 +456,7 @@ void Pipeline::Impl::run()
     }
 }
 
-void Pipeline::Impl::stop()
-{
-}
+void Pipeline::Impl::stop() {}
 
 Pipeline::Pipeline(http::WhipClient& whipClient, std::string&& mpegTsAddress, const uint32_t mpegTsPort)
     : impl_(std::make_unique<Pipeline::Impl>(whipClient, std::move(mpegTsAddress), mpegTsPort))
