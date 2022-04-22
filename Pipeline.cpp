@@ -344,7 +344,7 @@ void Pipeline::Impl::onNegotiationNeeded()
     for (uint32_t i = 0; i < transceivers->len; ++i)
     {
         auto transceiver = g_array_index(transceivers, GstWebRTCRTPTransceiver*, i);
-        transceiver->direction = GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY;
+        g_object_set(transceiver, "direction", GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY, nullptr);
         g_object_set(transceiver, "fec-type", GST_WEBRTC_FEC_TYPE_NONE, nullptr);
     }
 
