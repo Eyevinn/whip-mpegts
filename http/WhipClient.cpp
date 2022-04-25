@@ -1,5 +1,4 @@
 #include "http/WhipClient.h"
-#include "Logger.h"
 #include <cassert>
 #include <libsoup/soup.h>
 #include <unordered_map>
@@ -30,7 +29,8 @@ WhipClient::WhipClient(std::string&& url, std::string&& authKey)
       url_(std::move(url)),
       authKey_(std::move(authKey))
 {
-    data_->soupSession_ = soup_session_new_with_options(SOUP_SESSION_TIMEOUT, 5, nullptr);
+    data_->soupSession_ =
+        soup_session_new_with_options(SOUP_SESSION_TIMEOUT, 5, SOUP_SESSION_SSL_STRICT, FALSE, nullptr);
     if (!data_->soupSession_)
     {
         assert(false);
@@ -38,8 +38,7 @@ WhipClient::WhipClient(std::string&& url, std::string&& authKey)
     }
 }
 
-WhipClient::~WhipClient()
-{}
+WhipClient::~WhipClient() {}
 
 WhipClient::SendOfferResult WhipClient::sendOffer(const std::string& sdp)
 {
@@ -48,6 +47,7 @@ WhipClient::SendOfferResult WhipClient::sendOffer(const std::string& sdp)
     {
         return {};
     }
+
     soup_message_set_request(soupMessage, "application/sdp", SOUP_MEMORY_COPY, sdp.c_str(), sdp.size());
     if (!authKey_.empty())
     {
@@ -81,6 +81,7 @@ bool WhipClient::updateIce(const std::string& resourceUrl, std::string&& sdp)
     {
         return false;
     }
+
     soup_message_set_request(soupMessage, "application/trickle-ice-sdpfrag", SOUP_MEMORY_COPY, sdp.c_str(), sdp.size());
     if (!authKey_.empty())
     {
