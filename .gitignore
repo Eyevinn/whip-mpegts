@@ -9,3 +9,4 @@ CMakeScripts/
 build/
 mpeg-ts-client.build/
 mpeg-ts-client.xcodeproj/
+.vscode
