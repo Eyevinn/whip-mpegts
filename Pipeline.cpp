@@ -22,12 +22,13 @@ public:
     void run();
     void stop();
 
+    void onPipelineMessage(GstMessage* message);
     void onDemuxPadAdded(GstPad* newPad);
     void onOfferCreated(GstPromise* promise);
     void onNegotiationNeeded();
     void onIceCandidate(guint mLineIndex, gchar* candidate);
 
-    static gboolean pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, GstElement* pipe);
+    static gboolean pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData);
     static void demuxPadAddedCallback(GstElement* /*src*/, GstPad* newPad, gpointer userData);
     static void onOfferCreatedCallback(GstPromise* promise, gpointer userData);
     static void onNegotiationNeededCallback(GstElement* /*webRtcBin*/, gpointer userData);
@@ -40,31 +41,43 @@ private:
         UDP_QUEUE,
         TS_DEMUX,
         VIDEO_DEMUX_QUEUE,
+
         H264_PARSE,
         H264_DECODE,
         H264_DECODE_QUEUE,
+
+        VIDEO_CONVERT,
+        VIDEO_CONVERT_QUEUE,
+
         MPEG2_PARSE,
         MPEG2_DECODE,
         MPEG2_DECODE_QUEUE,
+
         RTP_VIDEO_ENCODE,
         RTP_VIDEO_ENCODE_QUEUE,
         RTP_VIDEO_PAYLOAD,
         RTP_VIDEO_PAYLOAD_QUEUE,
         RTP_VIDEO_FILTER,
+
         AUDIO_DEMUX_QUEUE,
+
         AAC_PARSE,
         AAC_PARSE_QUEUE,
         AAC_DECODE,
         AAC_DECODE_QUEUE,
+
         PCM_PARSE,
+
         AUDIO_CONVERT,
         AUDIO_RESAMPLE,
         AUDIO_RESAMPLE_QUEUE,
+
         RTP_AUDIO_ENCODE,
         RTP_AUDIO_ENCODE_QUEUE,
         RTP_AUDIO_PAYLOAD,
         RTP_AUDIO_PAYLOAD_QUEUE,
         RTP_AUDIO_FILTER,
+
         WEBRTC_BIN
     };
 
@@ -97,6 +110,9 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
     makeElement(ElementLabel::H264_DECODE, "H264_DECODE", "avdec_h264");
     makeElement(ElementLabel::H264_DECODE_QUEUE, "H264_DECODE_QUEUE", "queue");
 
+    makeElement(ElementLabel::VIDEO_CONVERT, "VIDEO_CONVERT", "videoconvert");
+    makeElement(ElementLabel::VIDEO_CONVERT_QUEUE, "VIDEO_CONVERT_QUEUE", "queue");
+
     makeElement(ElementLabel::MPEG2_PARSE, "MPEG2_PARSE", "mpegvideoparse");
     makeElement(ElementLabel::MPEG2_DECODE, "MPEG2_DECODE", "avdec_mpeg2video");
     makeElement(ElementLabel::MPEG2_DECODE_QUEUE, "MPEG2_DECODE_QUEUE", "queue");
@@ -112,7 +128,9 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
     makeElement(ElementLabel::AAC_PARSE_QUEUE, "AAC_PARSE_QUEUE", "queue");
     makeElement(ElementLabel::AAC_DECODE, "AAC_DECODE", "avdec_aac");
     makeElement(ElementLabel::AAC_DECODE_QUEUE, "AAC_DECODE_QUEUE", "queue");
+
     makeElement(ElementLabel::PCM_PARSE, "PCM_PARSE", "rawaudioparse");
+
     makeElement(ElementLabel::AUDIO_CONVERT, "AUDIO_CONVERT", "audioconvert");
     makeElement(ElementLabel::AUDIO_RESAMPLE, "AUDIO_RESAMPLE", "audioresample");
     makeElement(ElementLabel::AUDIO_RESAMPLE_QUEUE, "AUDIO_RESAMPLE_QUEUE", "queue");
@@ -164,16 +182,19 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
         825984,
         nullptr);
 
+    g_object_set(elements_[ElementLabel::UDP_QUEUE], "min-threshold-time", 1000000000ULL, nullptr);
+    g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE_QUEUE], "min-threshold-time", 1000000000ULL, nullptr);
+
     g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
-    g_object_set(elements_[ElementLabel::H264_DECODE], "skip-frame", 1, nullptr);
+    //g_object_set(elements_[ElementLabel::H264_DECODE], "skip-frame", 1, nullptr);
 
     g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
         "threads",
-        4,
+        2,
         "target-bitrate",
         256000000,
         "error-resilient",
-        0,
+        1,
         "end-usage",
         0,
         "deadline",
@@ -217,6 +238,8 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
         "send",
         "stun-server",
         "stun://stun.l.google.com:19302",
+        "bundle-policy",
+        GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE,
         nullptr);
     gst_element_sync_state_with_parent(elements_[ElementLabel::WEBRTC_BIN]);
 
@@ -244,6 +267,74 @@ Pipeline::Impl::~Impl()
     gst_deinit();
 }
 
+void Pipeline::Impl::onPipelineMessage(GstMessage* message)
+{
+    switch (GST_MESSAGE_TYPE(message))
+    {
+    case GST_MESSAGE_STATE_CHANGED:
+        if (GST_ELEMENT(message->src) == pipeline_)
+        {
+            GstState oldState;
+            GstState newState;
+            GstState pendingState;
+
+            gst_message_parse_state_changed(message, &oldState, &newState, &pendingState);
+
+            {
+                auto dumpName = g_strconcat("state_changed-",
+                    gst_element_state_get_name(oldState),
+                    "_",
+                    gst_element_state_get_name(newState),
+                    nullptr);
+                GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(message->src), GST_DEBUG_GRAPH_SHOW_ALL, dumpName);
+                g_free(dumpName);
+            }
+        }
+        break;
+
+    case GST_MESSAGE_ERROR:
+    {
+        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipe), GST_DEBUG_GRAPH_SHOW_ALL, "error");
+
+        GError* err = nullptr;
+        gchar* dbgInfo = nullptr;
+
+        gst_message_parse_error(message, &err, &dbgInfo);
+        Logger::log("ERROR from element %s: %s", GST_OBJECT_NAME(message->src), err->message);
+        Logger::log("Debugging info: %s", dbgInfo ? dbgInfo : "none");
+        g_error_free(err);
+        g_free(dbgInfo);
+    }
+    break;
+
+    case GST_MESSAGE_EOS:
+    {
+        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipe), GST_DEBUG_GRAPH_SHOW_ALL, "eos");
+        Logger::log("EOS received");
+    }
+    break;
+
+    case GST_MESSAGE_NEW_CLOCK:
+    {
+        Logger::log("New pipeline clock");
+    }
+    break;
+
+    case GST_MESSAGE_CLOCK_LOST:
+        Logger::log("Clock lost, restarting pipeline");
+        if (gst_element_set_state(pipeline_, GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE ||
+            gst_element_set_state(pipeline_, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE)
+        {
+            Logger::log("Unable to restart the pipeline.");
+            return;
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
 void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
 {
     utils::ScopedGstObject newPadCaps(gst_pad_get_current_caps(newPad));
@@ -264,6 +355,8 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
                 elements_[ElementLabel::H264_PARSE],
                 elements_[ElementLabel::H264_DECODE],
                 elements_[ElementLabel::H264_DECODE_QUEUE],
+                elements_[ElementLabel::VIDEO_CONVERT],
+                elements_[ElementLabel::VIDEO_CONVERT_QUEUE],
                 elements_[ElementLabel::RTP_VIDEO_ENCODE],
                 elements_[ElementLabel::RTP_VIDEO_ENCODE_QUEUE],
                 elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
@@ -294,6 +387,8 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
                 elements_[ElementLabel::MPEG2_PARSE],
                 elements_[ElementLabel::MPEG2_DECODE],
                 elements_[ElementLabel::MPEG2_DECODE_QUEUE],
+                elements_[ElementLabel::VIDEO_CONVERT],
+                elements_[ElementLabel::VIDEO_CONVERT_QUEUE],
                 elements_[ElementLabel::RTP_VIDEO_ENCODE],
                 elements_[ElementLabel::RTP_VIDEO_ENCODE_QUEUE],
                 elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
@@ -486,6 +581,12 @@ void Pipeline::Impl::makeElement(const ElementLabel elementLabel, const char* na
         Logger::log("Unable to make gst element %s", element);
         return;
     }
+
+    if (strncmp(element, "queue", 5) == 0) {
+        g_object_set(result.first->second, "max-size-buffers", 0, nullptr);
+        g_object_set(result.first->second, "max-size-bytes", 0, nullptr);
+        g_object_set(result.first->second, "max-size-time", 0, nullptr);
+    }
 }
 
 bool Pipeline::Impl::validate() const noexcept
@@ -530,58 +631,10 @@ void Pipeline::stop()
     impl_->stop();
 }
 
-gboolean Pipeline::Impl::pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, GstElement* pipe)
+gboolean Pipeline::Impl::pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData)
 {
-    switch (GST_MESSAGE_TYPE(message))
-    {
-    case GST_MESSAGE_STATE_CHANGED:
-        if (GST_ELEMENT(message->src) == pipe)
-        {
-            GstState oldState;
-            GstState newState;
-            GstState pendingState;
-
-            gst_message_parse_state_changed(message, &oldState, &newState, &pendingState);
-
-            {
-                auto dumpName = g_strconcat("state_changed-",
-                    gst_element_state_get_name(oldState),
-                    "_",
-                    gst_element_state_get_name(newState),
-                    nullptr);
-                GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(message->src), GST_DEBUG_GRAPH_SHOW_ALL, dumpName);
-                g_free(dumpName);
-            }
-        }
-        break;
-
-    case GST_MESSAGE_ERROR:
-    {
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipe), GST_DEBUG_GRAPH_SHOW_ALL, "error");
-
-        GError* err = nullptr;
-        gchar* dbgInfo = nullptr;
-
-        gst_message_parse_error(message, &err, &dbgInfo);
-        Logger::log("ERROR from element %s: %s", GST_OBJECT_NAME(message->src), err->message);
-        Logger::log("Debugging info: %s", dbgInfo ? dbgInfo : "none");
-        g_error_free(err);
-        g_free(dbgInfo);
-
-        break;
-    }
-
-    case GST_MESSAGE_EOS:
-    {
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipe), GST_DEBUG_GRAPH_SHOW_ALL, "eos");
-        Logger::log("EOS received");
-        break;
-    }
-
-    default:
-        break;
-    }
-
+    auto impl = reinterpret_cast<Pipeline::Impl*>(userData);
+    impl->onPipelineMessage(message);
     return TRUE;
 }
 
