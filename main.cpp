@@ -1,12 +1,15 @@
 #include "http/WhipClient.h"
-#include "Logger.h"
 #include "Pipeline.h"
 #include <csignal>
 #include <cstdint>
 #include <glib-2.0/glib.h>
+#include <unistd.h>
 
 namespace
 {
+
+const char* usageString =
+    "Usage: mpeg-ts-client -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -34,26 +37,36 @@ int32_t main(int32_t argc, char** argv)
 
     std::string url;
     std::string authKey;
-    std::string mpegTsAddress;
+    std::string mpegTsAddress = "0.0.0.0";
     uint32_t mpegTsPort = 0;
+    int32_t getOptResult;
 
-    if (argc < 4)
+    while ((getOptResult = getopt(argc, argv, "a:p:u:k:")) != -1)
     {
-        Logger::log("Usage: mpeg-ts-client <MPEG-TS address> <MPEG-TS port> <WHIP endpoint URL> [WHIP auth key]");
-        return -1;
+        switch (getOptResult)
+        {
+        case 'a':
+            mpegTsAddress = optarg;
+            break;
+        case 'p':
+            mpegTsPort = std::strtoul(optarg, nullptr, 10);
+            break;
+        case 'u':
+            url = optarg;
+            break;
+        case 'k':
+            authKey = optarg;
+            break;
+        default:
+            printf("%s\n", usageString);
+            return 1;
+        }
     }
-    else if (argc == 4)
+
+    if (mpegTsAddress.empty() || mpegTsPort == 0 || url.empty())
     {
-        mpegTsAddress = argv[1];
-        mpegTsPort = std::strtoul(argv[2], nullptr, 10);
-        url = argv[3];
-    }
-    else if (argc == 5)
-    {
-        mpegTsAddress = argv[1];
-        mpegTsPort = std::strtoul(argv[2], nullptr, 10);
-        url = argv[3];
-        authKey = argv[4];
+        printf("%s\n", usageString);
+        return 1;
     }
 
     mainLoop = g_main_loop_new(nullptr, FALSE);

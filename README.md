@@ -4,7 +4,7 @@ MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an 
 
 ## Getting started
 
-Supported platforms are Ubuntu 21.10 and OSX.
+Supported platforms are Ubuntu 20.04, 21.10 and OSX.
 
 ### Ubuntu 21.10
 
@@ -23,7 +23,7 @@ make
 
 Run:
 ```
-./mpeg-ts-client <MPEG-TS address> <MPEG-TS port> <WHIP endpoint URL> [WHIP auth key]
+./mpeg-ts-client -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
 ```
 
 ### OSX
