@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.16.0)
 project(mpeg-ts-client)
 
 set(CMAKE_CXX_STANDARD 17)
