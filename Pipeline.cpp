@@ -41,11 +41,9 @@ private:
         TS_DEMUX,
         VIDEO_DEMUX_QUEUE,
         H264_PARSE,
-        H264_PARSE_QUEUE,
         H264_DECODE,
         H264_DECODE_QUEUE,
         MPEG2_PARSE,
-        MPEG2_PARSE_QUEUE,
         MPEG2_DECODE,
         MPEG2_DECODE_QUEUE,
         RTP_VIDEO_ENCODE,
@@ -57,8 +55,11 @@ private:
         AAC_PARSE,
         AAC_PARSE_QUEUE,
         AAC_DECODE,
-        AUDIO_CONVERT,
         AAC_DECODE_QUEUE,
+        PCM_PARSE,
+        AUDIO_CONVERT,
+        AUDIO_RESAMPLE,
+        AUDIO_RESAMPLE_QUEUE,
         RTP_AUDIO_ENCODE,
         RTP_AUDIO_ENCODE_QUEUE,
         RTP_AUDIO_PAYLOAD,
@@ -93,12 +94,10 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
     makeElement(ElementLabel::VIDEO_DEMUX_QUEUE, "VIDEO_DEMUX_QUEUE", "queue");
 
     makeElement(ElementLabel::H264_PARSE, "H264_PARSE", "h264parse");
-    makeElement(ElementLabel::H264_PARSE_QUEUE, "H264_PARSE_QUEUE", "queue");
     makeElement(ElementLabel::H264_DECODE, "H264_DECODE", "avdec_h264");
     makeElement(ElementLabel::H264_DECODE_QUEUE, "H264_DECODE_QUEUE", "queue");
 
     makeElement(ElementLabel::MPEG2_PARSE, "MPEG2_PARSE", "mpegvideoparse");
-    makeElement(ElementLabel::MPEG2_PARSE_QUEUE, "MPEG2_PARSE_QUEUE", "queue");
     makeElement(ElementLabel::MPEG2_DECODE, "MPEG2_DECODE", "avdec_mpeg2video");
     makeElement(ElementLabel::MPEG2_DECODE_QUEUE, "MPEG2_DECODE_QUEUE", "queue");
 
@@ -112,8 +111,11 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
     makeElement(ElementLabel::AAC_PARSE, "AAC_PARSE", "aacparse");
     makeElement(ElementLabel::AAC_PARSE_QUEUE, "AAC_PARSE_QUEUE", "queue");
     makeElement(ElementLabel::AAC_DECODE, "AAC_DECODE", "avdec_aac");
-    makeElement(ElementLabel::AUDIO_CONVERT, "AUDIO_CONVERT", "audioconvert");
     makeElement(ElementLabel::AAC_DECODE_QUEUE, "AAC_DECODE_QUEUE", "queue");
+    makeElement(ElementLabel::PCM_PARSE, "PCM_PARSE", "rawaudioparse");
+    makeElement(ElementLabel::AUDIO_CONVERT, "AUDIO_CONVERT", "audioconvert");
+    makeElement(ElementLabel::AUDIO_RESAMPLE, "AUDIO_RESAMPLE", "audioresample");
+    makeElement(ElementLabel::AUDIO_RESAMPLE_QUEUE, "AUDIO_RESAMPLE_QUEUE", "queue");
     makeElement(ElementLabel::RTP_AUDIO_ENCODE, "RTP_AUDIO_ENCODE", "opusenc");
     makeElement(ElementLabel::RTP_AUDIO_ENCODE_QUEUE, "RTP_AUDIO_ENCODE_QUEUE", "queue");
     makeElement(ElementLabel::RTP_AUDIO_PAYLOAD, "RTP_AUDIO_PAYLOAD", "rtpopuspay");
@@ -146,22 +148,6 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
         return;
     }
 
-    if (!gst_element_link_many(elements_[ElementLabel::AUDIO_DEMUX_QUEUE],
-            elements_[ElementLabel::AAC_PARSE],
-            elements_[ElementLabel::AAC_PARSE_QUEUE],
-            elements_[ElementLabel::AAC_DECODE],
-            elements_[ElementLabel::AUDIO_CONVERT],
-            elements_[ElementLabel::AAC_DECODE_QUEUE],
-            elements_[ElementLabel::RTP_AUDIO_ENCODE],
-            elements_[ElementLabel::RTP_AUDIO_ENCODE_QUEUE],
-            elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
-            elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
-            nullptr))
-    {
-        Logger::log("Audio elements could not be linked.");
-        return;
-    }
-
     pipelineMessageBus_ = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
     gst_bus_add_watch(pipelineMessageBus_, reinterpret_cast<GstBusFunc>(pipelineBusWatch), pipeline_);
 
@@ -175,18 +161,23 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
         "auto-multicast",
         true,
         "buffer-size",
-        51200,
+        825984,
         nullptr);
+
+    g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
+    g_object_set(elements_[ElementLabel::H264_DECODE], "skip-frame", 1, nullptr);
 
     g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
         "threads",
-        2,
+        4,
         "target-bitrate",
         256000000,
         "error-resilient",
-        1,
+        0,
         "end-usage",
         0,
+        "deadline",
+        1,
         nullptr);
 
     utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
@@ -221,7 +212,12 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
         elements_[ElementLabel::WEBRTC_BIN],
         rtpVideoFilterCaps.get());
 
-    g_object_set(elements_[ElementLabel::WEBRTC_BIN], "name", "send", nullptr);
+    g_object_set(elements_[ElementLabel::WEBRTC_BIN],
+        "name",
+        "send",
+        "stun-server",
+        "stun://stun.l.google.com:19302",
+        nullptr);
     gst_element_sync_state_with_parent(elements_[ElementLabel::WEBRTC_BIN]);
 
     g_signal_connect(elements_[ElementLabel::WEBRTC_BIN],
@@ -253,6 +249,9 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
     utils::ScopedGstObject newPadCaps(gst_pad_get_current_caps(newPad));
     auto newPadStruct = gst_caps_get_structure(newPadCaps.get(), 0);
     auto newPadType = gst_structure_get_name(newPadStruct);
+
+    Logger::log("Dynamic pad created, type %s", newPadType);
+
     if (g_str_has_prefix(newPadType, "video/x-h264"))
     {
         const auto& findResult = elements_.find(ElementLabel::VIDEO_DEMUX_QUEUE);
@@ -263,7 +262,6 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
 
         if (!gst_element_link_many(elements_[ElementLabel::VIDEO_DEMUX_QUEUE],
                 elements_[ElementLabel::H264_PARSE],
-                elements_[ElementLabel::H264_PARSE_QUEUE],
                 elements_[ElementLabel::H264_DECODE],
                 elements_[ElementLabel::H264_DECODE_QUEUE],
                 elements_[ElementLabel::RTP_VIDEO_ENCODE],
@@ -282,7 +280,6 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
             return;
         }
 
-        Logger::log("Dynamic pad created, linking demuxer sink pad type %s", newPadType);
         gst_pad_link(newPad, sinkPad.get());
     }
     else if (g_str_has_prefix(newPadType, "video/mpeg"))
@@ -295,7 +292,6 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
 
         if (!gst_element_link_many(elements_[ElementLabel::VIDEO_DEMUX_QUEUE],
                 elements_[ElementLabel::MPEG2_PARSE],
-                elements_[ElementLabel::MPEG2_PARSE_QUEUE],
                 elements_[ElementLabel::MPEG2_DECODE],
                 elements_[ElementLabel::MPEG2_DECODE_QUEUE],
                 elements_[ElementLabel::RTP_VIDEO_ENCODE],
@@ -314,7 +310,6 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
             return;
         }
 
-        Logger::log("Dynamic pad created, linking demuxer sink pad type %s", newPadType);
         gst_pad_link(newPad, sinkPad.get());
     }
     else if (g_str_has_prefix(newPadType, "audio/mpeg"))
@@ -325,26 +320,79 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
             return;
         }
 
+        if (!gst_element_link_many(elements_[ElementLabel::AUDIO_DEMUX_QUEUE],
+                elements_[ElementLabel::AAC_PARSE],
+                elements_[ElementLabel::AAC_PARSE_QUEUE],
+                elements_[ElementLabel::AAC_DECODE],
+                elements_[ElementLabel::AAC_DECODE_QUEUE],
+                elements_[ElementLabel::AUDIO_CONVERT],
+                elements_[ElementLabel::AUDIO_RESAMPLE],
+                elements_[ElementLabel::AUDIO_RESAMPLE_QUEUE],
+                elements_[ElementLabel::RTP_AUDIO_ENCODE],
+                elements_[ElementLabel::RTP_AUDIO_ENCODE_QUEUE],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Audio elements could not be linked.");
+            return;
+        }
+
         utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
         if (gst_pad_is_linked(sinkPad.get()))
         {
             return;
         }
 
-        Logger::log("Dynamic pad created, linking demuxer sink pad type %s", newPadType);
+        gst_pad_link(newPad, sinkPad.get());
+    }
+    else if (g_str_has_prefix(newPadType, "audio/x-raw"))
+    {
+        const auto& findResult = elements_.find(ElementLabel::AUDIO_DEMUX_QUEUE);
+        if (findResult == elements_.cend())
+        {
+            return;
+        }
+
+        if (!gst_element_link_many(elements_[ElementLabel::AUDIO_DEMUX_QUEUE],
+                elements_[ElementLabel::PCM_PARSE],
+                elements_[ElementLabel::AUDIO_CONVERT],
+                elements_[ElementLabel::AUDIO_RESAMPLE],
+                elements_[ElementLabel::AUDIO_RESAMPLE_QUEUE],
+                elements_[ElementLabel::RTP_AUDIO_ENCODE],
+                elements_[ElementLabel::RTP_AUDIO_ENCODE_QUEUE],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Audio elements could not be linked.");
+            return;
+        }
+
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+        if (gst_pad_is_linked(sinkPad.get()))
+        {
+            return;
+        }
+
         gst_pad_link(newPad, sinkPad.get());
     }
 }
 
 void Pipeline::Impl::onNegotiationNeeded()
 {
+    Logger::log("onNegotiationNeeded");
+
     GArray* transceivers;
     g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "get-transceivers", &transceivers);
 
     for (uint32_t i = 0; i < transceivers->len; ++i)
     {
         auto transceiver = g_array_index(transceivers, GstWebRTCRTPTransceiver*, i);
-        g_object_set(transceiver, "direction", GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY, nullptr);
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(transceiver), "direction") != nullptr)
+        {
+            g_object_set(transceiver, "direction", GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY, nullptr);
+        }
         g_object_set(transceiver, "fec-type", GST_WEBRTC_FEC_TYPE_NONE, nullptr);
     }
 
@@ -364,6 +412,8 @@ void Pipeline::Impl::onNegotiationNeeded()
 
 void Pipeline::Impl::onOfferCreated(GstPromise* promise)
 {
+    Logger::log("onOfferCreated");
+
     utils::ScopedGstObject<GstWebRTCSessionDescription> offer;
     {
         GstWebRTCSessionDescription* offerPointer = nullptr;
@@ -372,8 +422,6 @@ void Pipeline::Impl::onOfferCreated(GstPromise* promise)
         offer.set(offerPointer);
     }
     gst_promise_unref(promise);
-
-    g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "set-local-description", offer.get(), nullptr);
 
     utils::ScopedGLibMem offerGChar(gst_sdp_message_as_text(offer.get()->sdp));
     const auto offerString = std::string(offerGChar.get());
@@ -386,6 +434,9 @@ void Pipeline::Impl::onOfferCreated(GstPromise* promise)
     }
     whipResource_ = std::move(sendOfferReply.resource_);
     Logger::log("Server responded with resource %s", whipResource_.c_str());
+
+    Logger::log("Setting local SDP");
+    g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "set-local-description", offer.get(), nullptr);
 
     {
         GstSDPMessage* answerMessage = nullptr;
@@ -404,18 +455,20 @@ void Pipeline::Impl::onOfferCreated(GstPromise* promise)
             return;
         }
 
+        Logger::log("Setting remote SDP");
         g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "set-remote-description", answer.get(), nullptr);
     }
 }
 
 void Pipeline::Impl::onIceCandidate(guint mLineIndex, gchar* candidate)
 {
-    if (!whipResource_.empty())
+    Logger::log("onIceCandidate %u %s", mLineIndex, candidate);
+
+    if (whipResource_.empty())
     {
+        Logger::log("Resource string empty");
         return;
     }
-
-    Logger::log("onIceCandidate %u %s", mLineIndex, candidate);
 
     std::array<char, 256> candidateString{};
     snprintf(candidateString.data(), candidateString.size(), "m=audio 9 RTP/AVP 0\r\na=mid:0\r\na=%s\r\n", candidate);
