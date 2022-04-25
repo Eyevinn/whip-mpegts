@@ -286,7 +286,6 @@ void Pipeline::Impl::onPipelineMessage(GstMessage* message)
                     "_",
                     gst_element_state_get_name(newState),
                     nullptr);
-                GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(message->src), GST_DEBUG_GRAPH_SHOW_ALL, dumpName);
                 g_free(dumpName);
             }
         }
@@ -294,8 +293,6 @@ void Pipeline::Impl::onPipelineMessage(GstMessage* message)
 
     case GST_MESSAGE_ERROR:
     {
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipe), GST_DEBUG_GRAPH_SHOW_ALL, "error");
-
         GError* err = nullptr;
         gchar* dbgInfo = nullptr;
 
@@ -309,7 +306,6 @@ void Pipeline::Impl::onPipelineMessage(GstMessage* message)
 
     case GST_MESSAGE_EOS:
     {
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipe), GST_DEBUG_GRAPH_SHOW_ALL, "eos");
         Logger::log("EOS received");
     }
     break;
