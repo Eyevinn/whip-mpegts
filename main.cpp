@@ -1,5 +1,6 @@
 #include "http/WhipClient.h"
 #include "Pipeline.h"
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <glib-2.0/glib.h>
@@ -8,8 +9,8 @@
 namespace
 {
 
-const char* usageString =
-    "Usage: mpeg-ts-client -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]";
+const char* usageString = "Usage: mpeg-ts-client -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k "
+                          "[WHIP auth key] -d [MPEG-TS buffer size ms]";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -40,8 +41,9 @@ int32_t main(int32_t argc, char** argv)
     std::string mpegTsAddress = "0.0.0.0";
     uint32_t mpegTsPort = 0;
     int32_t getOptResult;
+    std::chrono::milliseconds mpegTsBufferSize(1000);
 
-    while ((getOptResult = getopt(argc, argv, "a:p:u:k:")) != -1)
+    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:")) != -1)
     {
         switch (getOptResult)
         {
@@ -56,6 +58,9 @@ int32_t main(int32_t argc, char** argv)
             break;
         case 'k':
             authKey = optarg;
+            break;
+        case 'd':
+            mpegTsBufferSize = std::chrono::milliseconds(std::strtoull(optarg, nullptr, 10));
             break;
         default:
             printf("%s\n", usageString);
@@ -72,7 +77,7 @@ int32_t main(int32_t argc, char** argv)
     mainLoop = g_main_loop_new(nullptr, FALSE);
 
     http::WhipClient whipClient(std::move(url), std::move(authKey));
-    pipeline = std::make_unique<Pipeline>(whipClient, std::move(mpegTsAddress), mpegTsPort);
+    pipeline = std::make_unique<Pipeline>(whipClient, std::move(mpegTsAddress), mpegTsPort, mpegTsBufferSize);
     pipeline->run();
 
     g_main_loop_run(mainLoop);

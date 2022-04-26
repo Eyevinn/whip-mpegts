@@ -16,7 +16,10 @@
 class Pipeline::Impl
 {
 public:
-    Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, const uint32_t mpegTsPort);
+    Impl(http::WhipClient& whipClient,
+        std::string&& mpegTsAddress,
+        const uint32_t mpegTsPort,
+        const std::chrono::milliseconds mpegTsBufferSize);
     ~Impl();
 
     void run();
@@ -85,10 +88,18 @@ private:
     void onPcmSinkPadAdded(GstPad* newPad);
 };
 
-Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, const uint32_t mpegTsPort)
+Pipeline::Impl::Impl(http::WhipClient& whipClient,
+    std::string&& mpegTsAddress,
+    const uint32_t mpegTsPort,
+    const std::chrono::milliseconds mpegTsBufferSize)
     : pipelineMessageBus_(nullptr),
       whipClient_(whipClient)
 {
+
+    Logger::log("Creating pipeline mpegTsAddress %s, mpegTsPort %u, mpegTsBufferSize %llu ns",
+        mpegTsAddress.c_str(),
+        mpegTsPort,
+        std::chrono::nanoseconds(mpegTsBufferSize).count());
     gst_init(nullptr, nullptr);
 
     pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
@@ -157,7 +168,10 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient, std::string&& mpegTsAddress, 
         825984,
         nullptr);
 
-    g_object_set(elements_[ElementLabel::UDP_QUEUE], "min-threshold-time", 1000000000ULL, nullptr);
+    g_object_set(elements_[ElementLabel::UDP_QUEUE],
+        "min-threshold-time",
+        std::chrono::nanoseconds(mpegTsBufferSize).count(),
+        nullptr);
     g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
 
     g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
@@ -583,8 +597,11 @@ void Pipeline::Impl::run()
 
 void Pipeline::Impl::stop() {}
 
-Pipeline::Pipeline(http::WhipClient& whipClient, std::string&& mpegTsAddress, const uint32_t mpegTsPort)
-    : impl_(std::make_unique<Pipeline::Impl>(whipClient, std::move(mpegTsAddress), mpegTsPort))
+Pipeline::Pipeline(http::WhipClient& whipClient,
+    std::string&& mpegTsAddress,
+    const uint32_t mpegTsPort,
+    const std::chrono::milliseconds mpegTsBufferSize)
+    : impl_(std::make_unique<Pipeline::Impl>(whipClient, std::move(mpegTsAddress), mpegTsPort, mpegTsBufferSize))
 {
 }
 
