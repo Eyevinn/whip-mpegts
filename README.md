@@ -47,7 +47,7 @@ make
 Run:
 ```
 export GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0/
-./mpeg-ts-client <MPEG-TS address> <MPEG-TS port> <WHIP endpoint URL> [WHIP auth key]
+./mpeg-ts-client -a <MPEG-TS address> -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
 ```
 
 ### Docker Container
@@ -55,13 +55,13 @@ export GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0/
 Build container (uses multi-stage builds):
 
 ```
-docker run build -t mpegts-whip:dev .
+docker build -t mpegts-whip:dev .
 ```
 
 Run container (example):
 
 ```
-docker run --rm -p 9998:9998/udp -a 0.0.0.0 -p 9998 -u http://<whip-url>
+docker run --rm -p <MPEG-TS port>:<MPEG-TS port>/udp mpegts-whip:dev -a <MPEG-TS address> -p <MPEG-TS port> -u http://<WHIP endpoint URL> -k [WHIP auth key]
 ```
 
 ## License (Apache-2.0)
