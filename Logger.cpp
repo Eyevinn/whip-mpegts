@@ -36,6 +36,7 @@ void log(const char* format, ...)
 
     vsnprintf(logString.data(), logString.size(), format, args);
     fprintf(stdout, "[%s] %s\n", timeString.data(), logString.data());
+    fflush(stdout);
 }
 
 }
