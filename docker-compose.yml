@@ -1,0 +1,19 @@
+version: "3.7"
+networks:
+  rtc-net:
+    driver: bridge
+
+services:
+  camera:
+    depends_on:
+      - whip
+    image: eyevinntechnology/ffmpeg-base:0.3.0
+    networks:
+      - rtc-net
+    command: [ "ffmpeg", "-fflags", "nobuffer", "-rtsp_transport", "tcp", "-i", "<RTSP_INPUT>", "-vcodec", "copy", "-acodec", "aac", "-f", "mpegts", "udp://whip:9998?pkt_size=1316" ]
+  whip:
+    build: .
+    image: mpegts-whip:dev
+    command: [ "./mpeg-ts-client", "-a", "0.0.0.0", "-p", "9998", "-u", "<WHIP_ENDPOINT>" ]
+    networks:
+      - rtc-net
