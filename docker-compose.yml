@@ -3,7 +3,7 @@ version: "3.7"
 services:
   camera:
     depends_on:
-     - whip
+     - whipclient
     image: eyevinntechnology/ffmpeg-base:0.3.0
     network_mode: "host"
     command: [ "ffmpeg", "-fflags", "nobuffer", "-rtsp_transport", "tcp", "-i", "<RTSP_INPUT>", "-vcodec", "copy", "-acodec", "aac", "-f", "mpegts", "udp://127.0.0.1:9998?pkt_size=1316" ]
