@@ -4,7 +4,7 @@ project(mpeg-ts-client)
 set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O0 -DDEBUG -Wall -Wuninitialized -Wsign-compare -Wno-missing-braces")
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O3 -DNDEBUG -Wall -Wuninitialized -Wsign-compare -Wno-missing-braces")
+set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O3 -DNDEBUG -Wall -Wuninitialized -Wsign-compare -Wno-missing-braces")
 
 find_package(PkgConfig)
 pkg_search_module(GLIB REQUIRED glib-2.0)
