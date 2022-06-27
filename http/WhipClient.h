@@ -13,6 +13,7 @@ public:
     struct SendOfferResult
     {
         std::string resource_;
+        std::string etag_;
         std::vector<std::string> extensions_;
         std::string sdpAnswer_;
     };
@@ -20,7 +21,7 @@ public:
     WhipClient(std::string&& url, std::string&& authKey);
     ~WhipClient();
     SendOfferResult sendOffer(const std::string& sdp);
-    bool updateIce(const std::string& resourceUrl, std::string&& sdp);
+    bool updateIce(const std::string& resourceUrl, const std::string& etag, std::string&& sdp);
 
 private:
     struct OpaqueSoupData;

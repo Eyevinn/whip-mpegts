@@ -71,10 +71,16 @@ WhipClient::SendOfferResult WhipClient::sendOffer(const std::string& sdp)
     SendOfferResult result;
     result.resource_ = locationItr->second;
     result.sdpAnswer_ = soupMessage->response_body->data;
+
+    const auto etagItr = headers.find("etag");
+    if (etagItr != headers.cend()) {
+        result.etag_ = etagItr->second;
+    }
+
     return result;
 }
 
-bool WhipClient::updateIce(const std::string& resourceUrl, std::string&& sdp)
+bool WhipClient::updateIce(const std::string& resourceUrl, const std::string& etag, std::string&& sdp)
 {
     auto soupMessage = soup_message_new("PATCH", resourceUrl.c_str());
     if (!soupMessage)
@@ -86,6 +92,9 @@ bool WhipClient::updateIce(const std::string& resourceUrl, std::string&& sdp)
     if (!authKey_.empty())
     {
         soup_message_headers_append(soupMessage->request_headers, "Authorization", authKey_.c_str());
+    }
+    if (!etag.empty()) {
+        soup_message_headers_append(soupMessage->request_headers, "ETag", etag.c_str());
     }
 
     auto statusCode = soup_session_send_message(data_->soupSession_, soupMessage);

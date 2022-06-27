@@ -80,6 +80,7 @@ private:
     http::WhipClient& whipClient_;
 
     std::string whipResource_;
+    std::string etag_;
 
     void makeElement(const ElementLabel elementLabel, const char* name, const char* element);
     void onH264SinkPadAdded(GstPad* newPad);
@@ -524,7 +525,8 @@ void Pipeline::Impl::onOfferCreated(GstPromise* promise)
         return;
     }
     whipResource_ = std::move(sendOfferReply.resource_);
-    Logger::log("Server responded with resource %s", whipResource_.c_str());
+    etag_ = std::move((sendOfferReply.etag_));
+    Logger::log("Server responded with resource %s, etag %s", whipResource_.c_str(), etag_.c_str());
 
     Logger::log("Setting local SDP");
     g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "set-local-description", offer.get(), nullptr);
@@ -563,7 +565,7 @@ void Pipeline::Impl::onIceCandidate(guint mLineIndex, gchar* candidate)
 
     std::array<char, 256> candidateString{};
     snprintf(candidateString.data(), candidateString.size(), "m=audio 9 RTP/AVP 0\r\na=mid:0\r\na=%s\r\n", candidate);
-    if (!whipClient_.updateIce(whipResource_, candidateString.data()))
+    if (!whipClient_.updateIce(whipResource_, etag_, candidateString.data()))
     {
         Logger::log("Unable to send ICE candidate to server");
     }
