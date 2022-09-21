@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16.0)
-project(mpeg-ts-client)
+project(whip-mpegts)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -38,7 +38,7 @@ set(FILES
         utils/ScopedGLibMem.h
         Logger.cpp)
 
-add_executable(mpeg-ts-client ${FILES})
+add_executable(whip-mpegts ${FILES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE
         ${PROJECT_SOURCE_DIR}
@@ -54,3 +54,5 @@ target_link_libraries(${PROJECT_NAME}
         ${GSTREAMER_WEBRTC_LDFLAGS}
         ${GSTREAMER_SDP_LDFLAGS}
         ${SOUP_LDFLAGS})
+
+install(TARGETS whip-mpegts DESTINATION bin)
