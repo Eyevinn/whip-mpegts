@@ -16,6 +16,6 @@ RUN apt-get update
 RUN apt-get -y install libgstreamer1.0-0 gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-libav gstreamer1.0-plugins-rtp gstreamer1.0-nice libsoup2.4-1 gstreamer1.0-tools
 
 WORKDIR /app
-COPY --from=0 /src/mpeg-ts-client ./mpeg-ts-client
+COPY --from=0 /src/whip-mpegts ./whip-mpegts
 
-ENTRYPOINT ["./mpeg-ts-client"]
+ENTRYPOINT ["./whip-mpegts"]
