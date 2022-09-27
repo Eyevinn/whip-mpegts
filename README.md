@@ -23,7 +23,7 @@ make
 
 Run:
 ```
-./mpeg-ts-client -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
+./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
 ```
 
 ### OSX
@@ -47,7 +47,7 @@ make
 Run:
 ```
 export GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0/
-./mpeg-ts-client -a <MPEG-TS address> -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
+./whip-mpegts -a <MPEG-TS address> -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
 ```
 
 ### Docker Container
