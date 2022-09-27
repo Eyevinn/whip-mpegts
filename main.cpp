@@ -9,7 +9,7 @@
 namespace
 {
 
-const char* usageString = "Usage: mpeg-ts-client -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k "
+const char* usageString = "Usage: whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k "
                           "[WHIP auth key] -d [MPEG-TS buffer size ms]";
 
 GMainLoop* mainLoop = nullptr;
