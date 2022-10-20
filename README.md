@@ -23,8 +23,10 @@ make
 
 Run:
 ```
-./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] [-t] [-w]
+./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w]
 ```
+
+Supplying a file with -f will override MPEG-TS settings, use either MPEG-TS or file input.
 
 Flags:
 
