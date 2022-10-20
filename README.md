@@ -23,8 +23,13 @@ make
 
 Run:
 ```
-./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
+./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] [-t] [-w]
 ```
+
+Flags:
+
+- \-t Enable burned in timer
+- \-w Open a local window displaying the video before transcoding for comparison
 
 ### OSX
 
