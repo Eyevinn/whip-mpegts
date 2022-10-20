@@ -73,7 +73,8 @@ WhipClient::SendOfferResult WhipClient::sendOffer(const std::string& sdp)
     result.sdpAnswer_ = soupMessage->response_body->data;
 
     const auto etagItr = headers.find("etag");
-    if (etagItr != headers.cend()) {
+    if (etagItr != headers.cend())
+    {
         result.etag_ = etagItr->second;
     }
 
@@ -93,7 +94,8 @@ bool WhipClient::updateIce(const std::string& resourceUrl, const std::string& et
     {
         soup_message_headers_append(soupMessage->request_headers, "Authorization", authKey_.c_str());
     }
-    if (!etag.empty()) {
+    if (!etag.empty())
+    {
         soup_message_headers_append(soupMessage->request_headers, "ETag", etag.c_str());
     }
 

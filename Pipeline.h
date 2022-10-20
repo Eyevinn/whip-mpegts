@@ -14,10 +14,15 @@ class WhipClient;
 class Pipeline
 {
 public:
-    explicit Pipeline(http::WhipClient& whipClient,
+    Pipeline(http::WhipClient& whipClient,
         std::string&& mpegTsAddress,
         const uint32_t mpegTsPort,
-        const std::chrono::milliseconds mpegTsBufferSize);
+        const std::chrono::milliseconds mpegTsBufferSize,
+        const bool showWindow,
+        const bool showTimer);
+
+    Pipeline(http::WhipClient& whipClient, std::string&& fileName, const bool showWindow, const bool showTimer);
+
     ~Pipeline();
 
     void run();

@@ -9,8 +9,9 @@
 namespace
 {
 
-const char* usageString = "Usage: whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k "
-                          "[WHIP auth key] -d [MPEG-TS buffer size ms]";
+const char* usageString =
+    "Usage: whip-mpegts -a [MPEG-TS address] -p [MPEG-TS port] -f [mp4 input file] -u <WHIP endpoint URL> -k "
+    "[WHIP auth key] -d [MPEG-TS buffer size ms] [-t] [-w]";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -42,8 +43,11 @@ int32_t main(int32_t argc, char** argv)
     uint32_t mpegTsPort = 0;
     int32_t getOptResult;
     std::chrono::milliseconds mpegTsBufferSize(1000);
+    std::string fileName;
+    auto showTimer = false;
+    auto showWindow = false;
 
-    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:")) != -1)
+    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:f:tw")) != -1)
     {
         switch (getOptResult)
         {
@@ -62,13 +66,22 @@ int32_t main(int32_t argc, char** argv)
         case 'd':
             mpegTsBufferSize = std::chrono::milliseconds(std::strtoull(optarg, nullptr, 10));
             break;
+        case 'f':
+            fileName = optarg;
+            break;
+        case 't':
+            showTimer = true;
+            break;
+        case 'w':
+            showWindow = true;
+            break;
         default:
             printf("%s\n", usageString);
             return 1;
         }
     }
 
-    if (mpegTsAddress.empty() || mpegTsPort == 0 || url.empty())
+    if (url.empty() || ((mpegTsAddress.empty() || mpegTsPort == 0) && fileName.empty()))
     {
         printf("%s\n", usageString);
         return 1;
@@ -77,7 +90,19 @@ int32_t main(int32_t argc, char** argv)
     mainLoop = g_main_loop_new(nullptr, FALSE);
 
     http::WhipClient whipClient(std::move(url), std::move(authKey));
-    pipeline = std::make_unique<Pipeline>(whipClient, std::move(mpegTsAddress), mpegTsPort, mpegTsBufferSize);
+    if (!fileName.empty())
+    {
+        pipeline = std::make_unique<Pipeline>(whipClient, std::move(fileName), showWindow, showTimer);
+    }
+    else
+    {
+        pipeline = std::make_unique<Pipeline>(whipClient,
+            std::move(mpegTsAddress),
+            mpegTsPort,
+            mpegTsBufferSize,
+            showWindow,
+            showTimer);
+    }
     pipeline->run();
 
     g_main_loop_run(mainLoop);

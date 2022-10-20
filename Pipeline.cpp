@@ -19,9 +19,15 @@ public:
     Impl(http::WhipClient& whipClient,
         std::string&& mpegTsAddress,
         const uint32_t mpegTsPort,
-        const std::chrono::milliseconds mpegTsBufferSize);
+        const std::chrono::milliseconds mpegTsBufferSize,
+        const bool showWindow,
+        const bool showTimer);
+
+    Impl(http::WhipClient& whipClient, std::string&& fileName, const bool showWindow, const bool showTimer);
+
     ~Impl();
 
+    void init();
     void run();
     void stop();
 
@@ -44,10 +50,17 @@ private:
         UDP_QUEUE,
         TS_DEMUX,
 
+        FILE_SOURCE,
+        QT_DEMUX,
+
         H264_PARSE,
         H264_DECODE,
 
         VIDEO_CONVERT,
+
+        TEE,
+        AUTO_VIDEO_SINK,
+        TIMER_OVERLAY,
 
         MPEG2_PARSE,
         MPEG2_DECODE,
@@ -82,6 +95,9 @@ private:
     std::string whipResource_;
     std::string etag_;
 
+    bool showWindow_;
+    bool showTimer_;
+
     void makeElement(const ElementLabel elementLabel, const char* name, const char* element);
     void onH264SinkPadAdded(GstPad* newPad);
     void onMpeg2SinkPadAdded(GstPad* newPad);
@@ -92,21 +108,101 @@ private:
 Pipeline::Impl::Impl(http::WhipClient& whipClient,
     std::string&& mpegTsAddress,
     const uint32_t mpegTsPort,
-    const std::chrono::milliseconds mpegTsBufferSize)
+    const std::chrono::milliseconds mpegTsBufferSize,
+    const bool showWindow,
+    const bool showTimer)
     : pipelineMessageBus_(nullptr),
-      whipClient_(whipClient)
+      whipClient_(whipClient),
+      showWindow_(showWindow),
+      showTimer_(showTimer)
 {
-
     Logger::log("Creating pipeline mpegTsAddress %s, mpegTsPort %u, mpegTsBufferSize %llu ns",
         mpegTsAddress.c_str(),
         mpegTsPort,
         std::chrono::nanoseconds(mpegTsBufferSize).count());
-    gst_init(nullptr, nullptr);
 
-    pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
+    init();
+
     makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
     makeElement(ElementLabel::UDP_QUEUE, "UDP_QUEUE", "queue");
     makeElement(ElementLabel::TS_DEMUX, "TS_DEMUX", "tsdemux");
+
+    if (!gst_element_link_many(elements_[ElementLabel::UDP_SOURCE],
+            elements_[ElementLabel::UDP_QUEUE],
+            elements_[ElementLabel::TS_DEMUX],
+            nullptr))
+    {
+        g_printerr("UPD source elements could not be linked.\n");
+        return;
+    }
+
+    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
+
+    g_object_set(elements_[ElementLabel::UDP_SOURCE],
+        "address",
+        mpegTsAddress.c_str(),
+        "port",
+        mpegTsPort,
+        "auto-multicast",
+        true,
+        "buffer-size",
+        825984,
+        nullptr);
+
+    g_object_set(elements_[ElementLabel::UDP_QUEUE],
+        "min-threshold-time",
+        std::chrono::nanoseconds(mpegTsBufferSize).count(),
+        nullptr);
+}
+
+Pipeline::Impl::Impl(http::WhipClient& whipClient,
+    std::string&& fileName,
+    const bool showWindow,
+    const bool showTimer)
+    : pipelineMessageBus_(nullptr),
+      whipClient_(whipClient),
+      showWindow_(showWindow),
+      showTimer_(showTimer)
+{
+    Logger::log("Creating pipeline fileName %s", fileName.c_str());
+    init();
+
+    makeElement(ElementLabel::FILE_SOURCE, "FILE_SOURCE", "filesrc");
+    makeElement(ElementLabel::QT_DEMUX, "QT_DEMUX", "qtdemux");
+
+    if (!gst_element_link_many(elements_[ElementLabel::FILE_SOURCE], elements_[ElementLabel::QT_DEMUX], nullptr))
+    {
+        g_printerr("File source elements could not be linked.\n");
+        return;
+    }
+
+    g_object_set(elements_[ElementLabel::FILE_SOURCE], "location", fileName.c_str(), nullptr);
+
+    g_signal_connect(elements_[ElementLabel::QT_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
+}
+
+Pipeline::Impl::~Impl()
+{
+    gst_element_set_state(pipeline_, GST_STATE_NULL);
+
+    if (pipeline_)
+    {
+        gst_object_unref(pipeline_);
+    }
+    if (pipelineMessageBus_)
+    {
+        gst_object_unref(pipelineMessageBus_);
+    }
+
+    gst_bus_remove_watch(pipelineMessageBus_);
+    gst_deinit();
+}
+
+void Pipeline::Impl::init()
+{
+    gst_init(nullptr, nullptr);
+
+    pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
 
     makeElement(ElementLabel::VIDEO_CONVERT, "VIDEO_CONVERT", "videoconvert");
 
@@ -135,44 +231,20 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
 
     makeElement(ElementLabel::WEBRTC_BIN, "WEBRTC_BIN", "webrtcbin");
 
-    for (const auto& entry : elements_)
+    if (showWindow_)
     {
-        if (!gst_bin_add(GST_BIN(pipeline_), entry.second))
-        {
-            Logger::log("Unable to add gst element");
-            return;
-        }
+        makeElement(ElementLabel::TEE, "TEE", "tee");
+        makeElement(ElementLabel::AUTO_VIDEO_SINK, "AUTO_VIDEO_SINK", "autovideosink");
     }
 
-    if (!gst_element_link_many(elements_[ElementLabel::UDP_SOURCE],
-            elements_[ElementLabel::UDP_QUEUE],
-            elements_[ElementLabel::TS_DEMUX],
-            nullptr))
+    if (showTimer_)
     {
-        g_printerr("UPD source elements could not be linked.\n");
-        return;
+        makeElement(ElementLabel::TIMER_OVERLAY, "TIMER_OVERLAY", "timeoverlay");
     }
 
     pipelineMessageBus_ = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
     gst_bus_add_watch(pipelineMessageBus_, reinterpret_cast<GstBusFunc>(pipelineBusWatch), pipeline_);
 
-    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
-
-    g_object_set(elements_[ElementLabel::UDP_SOURCE],
-        "address",
-        mpegTsAddress.c_str(),
-        "port",
-        mpegTsPort,
-        "auto-multicast",
-        true,
-        "buffer-size",
-        825984,
-        nullptr);
-
-    g_object_set(elements_[ElementLabel::UDP_QUEUE],
-        "min-threshold-time",
-        std::chrono::nanoseconds(mpegTsBufferSize).count(),
-        nullptr);
     g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
 
     g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
@@ -235,23 +307,6 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
         G_CALLBACK(onNegotiationNeededCallback),
         this);
     g_signal_connect(elements_[ElementLabel::WEBRTC_BIN], "on-ice-candidate", G_CALLBACK(onIceCandidateCallback), this);
-}
-
-Pipeline::Impl::~Impl()
-{
-    gst_element_set_state(pipeline_, GST_STATE_NULL);
-
-    if (pipeline_)
-    {
-        gst_object_unref(pipeline_);
-    }
-    if (pipelineMessageBus_)
-    {
-        gst_object_unref(pipelineMessageBus_);
-    }
-
-    gst_bus_remove_watch(pipelineMessageBus_);
-    gst_deinit();
 }
 
 void Pipeline::Impl::onPipelineMessage(GstMessage* message)
@@ -359,6 +414,38 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
     if (!gst_element_link_many(elements_[ElementLabel::H264_PARSE],
             elements_[ElementLabel::H264_DECODE],
             elements_[ElementLabel::VIDEO_CONVERT],
+            nullptr))
+    {
+        Logger::log("Video elements could not be linked.");
+        return;
+    }
+
+    auto lastElement = elements_[ElementLabel::VIDEO_CONVERT];
+
+    if (showTimer_)
+    {
+        if (!gst_element_link_many(lastElement, elements_[ElementLabel::TIMER_OVERLAY], nullptr))
+        {
+            Logger::log("Video elements could not be linked.");
+            return;
+        }
+        lastElement = elements_[ElementLabel::TIMER_OVERLAY];
+    }
+
+    if (showWindow_)
+    {
+        if (!gst_element_link_many(lastElement,
+                elements_[ElementLabel::TEE],
+                elements_[ElementLabel::AUTO_VIDEO_SINK],
+                nullptr))
+        {
+            Logger::log("Video elements could not be linked.");
+            return;
+        }
+        lastElement = elements_[ElementLabel::TEE];
+    }
+
+    if (!gst_element_link_many(lastElement,
             elements_[ElementLabel::RTP_VIDEO_ENCODE],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
@@ -521,7 +608,6 @@ void Pipeline::Impl::onOfferCreated(GstPromise* promise)
     auto sendOfferReply = whipClient_.sendOffer(offerString);
     if (sendOfferReply.resource_.empty())
     {
-        Logger::log("Unable to send offer to server");
         return;
     }
     whipResource_ = std::move(sendOfferReply.resource_);
@@ -553,10 +639,8 @@ void Pipeline::Impl::onOfferCreated(GstPromise* promise)
     }
 }
 
-void Pipeline::Impl::onIceCandidate(guint mLineIndex, gchar* candidate)
+void Pipeline::Impl::onIceCandidate(guint /*mLineIndex*/, gchar* candidate)
 {
-    Logger::log("onIceCandidate %u %s", mLineIndex, candidate);
-
     if (whipResource_.empty())
     {
         Logger::log("Resource string empty");
@@ -565,10 +649,7 @@ void Pipeline::Impl::onIceCandidate(guint mLineIndex, gchar* candidate)
 
     std::array<char, 256> candidateString{};
     snprintf(candidateString.data(), candidateString.size(), "m=audio 9 RTP/AVP 0\r\na=mid:0\r\na=%s\r\n", candidate);
-    if (!whipClient_.updateIce(whipResource_, etag_, candidateString.data()))
-    {
-        Logger::log("Unable to send ICE candidate to server");
-    }
+    whipClient_.updateIce(whipResource_, etag_, candidateString.data());
 }
 
 void Pipeline::Impl::makeElement(const ElementLabel elementLabel, const char* name, const char* element)
@@ -586,6 +667,12 @@ void Pipeline::Impl::makeElement(const ElementLabel elementLabel, const char* na
         g_object_set(result.first->second, "max-size-bytes", 0, nullptr);
         g_object_set(result.first->second, "max-size-time", 0, nullptr);
     }
+
+    if (!gst_bin_add(GST_BIN(pipeline_), result.first->second))
+    {
+        Logger::log("Unable to add gst element %s", name);
+        return;
+    }
 }
 
 void Pipeline::Impl::run()
@@ -602,8 +689,23 @@ void Pipeline::Impl::stop() {}
 Pipeline::Pipeline(http::WhipClient& whipClient,
     std::string&& mpegTsAddress,
     const uint32_t mpegTsPort,
-    const std::chrono::milliseconds mpegTsBufferSize)
-    : impl_(std::make_unique<Pipeline::Impl>(whipClient, std::move(mpegTsAddress), mpegTsPort, mpegTsBufferSize))
+    const std::chrono::milliseconds mpegTsBufferSize,
+    const bool showWindow,
+    const bool showTimer)
+    : impl_(std::make_unique<Pipeline::Impl>(whipClient,
+          std::move(mpegTsAddress),
+          mpegTsPort,
+          mpegTsBufferSize,
+          showWindow,
+          showTimer))
+{
+}
+
+Pipeline::Pipeline(http::WhipClient& whipClient,
+    std::string&& fileName,
+    const bool showWindow,
+    const bool showTimer)
+    : impl_(std::make_unique<Pipeline::Impl>(whipClient, std::move(fileName), showWindow, showTimer))
 {
 }
 
