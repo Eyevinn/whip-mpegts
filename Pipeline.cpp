@@ -57,10 +57,11 @@ private:
         H264_DECODE,
 
         VIDEO_CONVERT,
+        CONVERT_QUEUE,
 
         TEE,
         AUTO_VIDEO_SINK,
-        TIMER_OVERLAY,
+        CLOCK_OVERLAY,
 
         MPEG2_PARSE,
         MPEG2_DECODE,
@@ -205,6 +206,7 @@ void Pipeline::Impl::init()
     pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
 
     makeElement(ElementLabel::VIDEO_CONVERT, "VIDEO_CONVERT", "videoconvert");
+    makeElement(ElementLabel::CONVERT_QUEUE, "CONVERT_QUEUE", "videoconvert");
 
     makeElement(ElementLabel::H264_PARSE, "H264_PARSE", "h264parse");
     makeElement(ElementLabel::H264_DECODE, "H264_DECODE", "avdec_h264");
@@ -239,7 +241,7 @@ void Pipeline::Impl::init()
 
     if (showTimer_)
     {
-        makeElement(ElementLabel::TIMER_OVERLAY, "TIMER_OVERLAY", "timeoverlay");
+        makeElement(ElementLabel::CLOCK_OVERLAY, "CLOCK_OVERLAY", "clockoverlay");
     }
 
     pipelineMessageBus_ = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
@@ -413,23 +415,22 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
 
     if (!gst_element_link_many(elements_[ElementLabel::H264_PARSE],
             elements_[ElementLabel::H264_DECODE],
-            elements_[ElementLabel::VIDEO_CONVERT],
             nullptr))
     {
         Logger::log("Video elements could not be linked.");
         return;
     }
 
-    auto lastElement = elements_[ElementLabel::VIDEO_CONVERT];
+    auto lastElement = elements_[ElementLabel::H264_DECODE];
 
     if (showTimer_)
     {
-        if (!gst_element_link_many(lastElement, elements_[ElementLabel::TIMER_OVERLAY], nullptr))
+        if (!gst_element_link_many(lastElement, elements_[ElementLabel::CLOCK_OVERLAY], nullptr))
         {
             Logger::log("Video elements could not be linked.");
             return;
         }
-        lastElement = elements_[ElementLabel::TIMER_OVERLAY];
+        lastElement = elements_[ElementLabel::CLOCK_OVERLAY];
     }
 
     if (showWindow_)
@@ -446,6 +447,8 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
     }
 
     if (!gst_element_link_many(lastElement,
+            elements_[ElementLabel::VIDEO_CONVERT],
+            elements_[ElementLabel::CONVERT_QUEUE],
             elements_[ElementLabel::RTP_VIDEO_ENCODE],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
