@@ -11,7 +11,7 @@ namespace
 
 const char* usageString =
     "Usage: whip-mpegts -a [MPEG-TS address] -p [MPEG-TS port] -f [mp4 input file] -u <WHIP endpoint URL> -k "
-    "[WHIP auth key] -d [MPEG-TS buffer size ms] [-t] [-w]";
+    "[WHIP auth key] -d [MPEG-TS buffer size ms] [-t] [-w] [-s]";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -46,6 +46,7 @@ int32_t main(int32_t argc, char** argv)
     std::string fileName;
     auto showTimer = false;
     auto showWindow = false;
+    auto srtTransport = false;
 
     while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:f:tw")) != -1)
     {
@@ -75,6 +76,9 @@ int32_t main(int32_t argc, char** argv)
         case 'w':
             showWindow = true;
             break;
+        case 's':
+            srtTransport = true;
+            break;
         default:
             printf("%s\n", usageString);
             return 1;
@@ -101,7 +105,8 @@ int32_t main(int32_t argc, char** argv)
             mpegTsPort,
             mpegTsBufferSize,
             showWindow,
-            showTimer);
+            showTimer,
+            srtTransport);
     }
     pipeline->run();
 

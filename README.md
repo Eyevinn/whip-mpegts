@@ -23,7 +23,7 @@ make
 
 Run:
 ```
-./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w]
+./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w] [-s]
 ```
 
 Supplying a file with -f will override MPEG-TS settings, use either MPEG-TS or file input.
@@ -32,6 +32,7 @@ Flags:
 
 - \-t Enable burned in timer
 - \-w Open a local window displaying the video before transcoding for comparison
+- \-s Setup SRT socket in listener mode for receiving MPEG-TS
 
 ### OSX
 
