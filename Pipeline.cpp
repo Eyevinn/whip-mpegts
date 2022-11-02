@@ -48,12 +48,13 @@ private:
     enum class ElementLabel
     {
         UDP_SOURCE,
-        SRT_SOURCE,
         UDP_QUEUE,
         TS_DEMUX,
 
         FILE_SOURCE,
         QT_DEMUX,
+
+        SRT_SOURCE,
 
         H264_PARSE,
         H264_DECODE,
@@ -130,24 +131,45 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
 
     init();
 
-    makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
-    makeElement(ElementLabel::SRT_SOURCE, "SRT_SOURCE", "srtsrc");
     makeElement(ElementLabel::UDP_QUEUE, "UDP_QUEUE", "queue");
     makeElement(ElementLabel::TS_DEMUX, "TS_DEMUX", "tsdemux");
-
     if (!gst_element_link_many(
-            elements_[srtTransport_ ? ElementLabel::SRT_SOURCE : ElementLabel::UDP_SOURCE],
-            elements_[ElementLabel::UDP_QUEUE],
-            elements_[ElementLabel::TS_DEMUX],
-            nullptr))
+        elements_[ElementLabel::UDP_QUEUE],
+        elements_[ElementLabel::TS_DEMUX],
+        nullptr))
     {
         g_printerr("UDP source elements could not be linked.\n");
         return;
     }
 
-    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
+    if (!srtTransport_) {
+        makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
+        if (!gst_element_link(
+            elements_[ElementLabel::UDP_SOURCE],
+            elements_[ElementLabel::UDP_QUEUE]))
+        {
+            g_printerr("UDP transport elements could nt be linked.\n");
+        }
 
-    if (srtTransport_) {
+        g_object_set(elements_[ElementLabel::UDP_SOURCE],
+            "address",
+            mpegTsAddress.c_str(),
+            "port",
+            mpegTsPort,
+            "auto-multicast",
+            true,
+            "buffer-size",
+            825984,
+            nullptr);        
+    } else {
+        makeElement(ElementLabel::SRT_SOURCE, "SRT_SOURCE", "srtsrc");
+        if (!gst_element_link(
+            elements_[ElementLabel::SRT_SOURCE],
+            elements_[ElementLabel::UDP_QUEUE]))
+        {
+            g_printerr("SRT transport elements could nt be linked.\n");
+        }
+
         g_object_set(elements_[ElementLabel::SRT_SOURCE],
             "localaddress",
             mpegTsAddress.c_str(),
@@ -159,19 +181,10 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
             true,
             "latency",
             125,
-            nullptr);
-    } else {
-        g_object_set(elements_[ElementLabel::UDP_SOURCE],
-            "address",
-            mpegTsAddress.c_str(),
-            "port",
-            mpegTsPort,
-            "auto-multicast",
-            true,
-            "buffer-size",
-            825984,
-            nullptr);
+            nullptr);        
     }
+
+    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
 
     g_object_set(elements_[ElementLabel::UDP_QUEUE],
         "min-threshold-time",
