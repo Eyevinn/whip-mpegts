@@ -149,6 +149,7 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
             elements_[ElementLabel::UDP_QUEUE]))
         {
             g_printerr("UDP transport elements could nt be linked.\n");
+            return;
         }
 
         g_object_set(elements_[ElementLabel::UDP_SOURCE],
@@ -168,6 +169,7 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
             elements_[ElementLabel::UDP_QUEUE]))
         {
             g_printerr("SRT transport elements could nt be linked.\n");
+            return;
         }
 
         g_object_set(elements_[ElementLabel::SRT_SOURCE],
