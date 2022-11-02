@@ -21,7 +21,8 @@ public:
         const uint32_t mpegTsPort,
         const std::chrono::milliseconds mpegTsBufferSize,
         const bool showWindow,
-        const bool showTimer);
+        const bool showTimer,
+        const bool srtTransport);
 
     Impl(http::WhipClient& whipClient, std::string&& fileName, const bool showWindow, const bool showTimer);
 
@@ -52,6 +53,8 @@ private:
 
         FILE_SOURCE,
         QT_DEMUX,
+
+        SRT_SOURCE,
 
         H264_PARSE,
         H264_DECODE,
@@ -98,6 +101,7 @@ private:
 
     bool showWindow_;
     bool showTimer_;
+    bool srtTransport_;
 
     void makeElement(const ElementLabel elementLabel, const char* name, const char* element);
     void onH264SinkPadAdded(GstPad* newPad);
@@ -111,44 +115,78 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
     const uint32_t mpegTsPort,
     const std::chrono::milliseconds mpegTsBufferSize,
     const bool showWindow,
-    const bool showTimer)
+    const bool showTimer,
+    const bool srtTransport)
     : pipelineMessageBus_(nullptr),
       whipClient_(whipClient),
       showWindow_(showWindow),
-      showTimer_(showTimer)
+      showTimer_(showTimer),
+      srtTransport_(srtTransport)
 {
-    Logger::log("Creating pipeline mpegTsAddress %s, mpegTsPort %u, mpegTsBufferSize %llu ns",
+    Logger::log("Creating pipeline mpegTsAddress %s, mpegTsPort %u, mpegTsBufferSize %llu ns, srt=%s",
         mpegTsAddress.c_str(),
         mpegTsPort,
-        std::chrono::nanoseconds(mpegTsBufferSize).count());
+        std::chrono::nanoseconds(mpegTsBufferSize).count(),
+        srtTransport_ ? "true" : "false");
 
     init();
 
-    makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
     makeElement(ElementLabel::UDP_QUEUE, "UDP_QUEUE", "queue");
     makeElement(ElementLabel::TS_DEMUX, "TS_DEMUX", "tsdemux");
-
-    if (!gst_element_link_many(elements_[ElementLabel::UDP_SOURCE],
-            elements_[ElementLabel::UDP_QUEUE],
-            elements_[ElementLabel::TS_DEMUX],
-            nullptr))
+    if (!gst_element_link_many(
+        elements_[ElementLabel::UDP_QUEUE],
+        elements_[ElementLabel::TS_DEMUX],
+        nullptr))
     {
-        g_printerr("UPD source elements could not be linked.\n");
+        g_printerr("UDP source elements could not be linked.\n");
         return;
     }
 
-    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
+    if (!srtTransport_) {
+        makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
+        if (!gst_element_link(
+            elements_[ElementLabel::UDP_SOURCE],
+            elements_[ElementLabel::UDP_QUEUE]))
+        {
+            g_printerr("UDP transport elements could not be linked.\n");
+            return;
+        }
 
-    g_object_set(elements_[ElementLabel::UDP_SOURCE],
-        "address",
-        mpegTsAddress.c_str(),
-        "port",
-        mpegTsPort,
-        "auto-multicast",
-        true,
-        "buffer-size",
-        825984,
-        nullptr);
+        g_object_set(elements_[ElementLabel::UDP_SOURCE],
+            "address",
+            mpegTsAddress.c_str(),
+            "port",
+            mpegTsPort,
+            "auto-multicast",
+            true,
+            "buffer-size",
+            825984,
+            nullptr);        
+    } else {
+        makeElement(ElementLabel::SRT_SOURCE, "SRT_SOURCE", "srtsrc");
+        if (!gst_element_link(
+            elements_[ElementLabel::SRT_SOURCE],
+            elements_[ElementLabel::UDP_QUEUE]))
+        {
+            g_printerr("SRT transport elements could not be linked.\n");
+            return;
+        }
+
+        g_object_set(elements_[ElementLabel::SRT_SOURCE],
+            "localaddress",
+            mpegTsAddress.c_str(),
+            "localport",
+            mpegTsPort,
+            "mode",
+            2, // GST_SRT_CONNECTION_MODE_LISTENER,
+            "wait-for-connection",
+            true,
+            "latency",
+            125,
+            nullptr);        
+    }
+
+    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
 
     g_object_set(elements_[ElementLabel::UDP_QUEUE],
         "min-threshold-time",
@@ -694,13 +732,15 @@ Pipeline::Pipeline(http::WhipClient& whipClient,
     const uint32_t mpegTsPort,
     const std::chrono::milliseconds mpegTsBufferSize,
     const bool showWindow,
-    const bool showTimer)
+    const bool showTimer,
+    const bool srtTransport)
     : impl_(std::make_unique<Pipeline::Impl>(whipClient,
           std::move(mpegTsAddress),
           mpegTsPort,
           mpegTsBufferSize,
           showWindow,
-          showTimer))
+          showTimer,
+          srtTransport))
 {
 }
 

@@ -1,6 +1,6 @@
 # MPEG-TS client for the WebRTC-HTTP ingestion protocol
 
-MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an MPEG-TS unicast or multicast stream and sends it to a WHIP endpoint.
+MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an MPEG-TS unicast or multicast or [SRT](https://srtalliance.org/) stream and sends it to a WHIP endpoint.
 
 ## Getting started
 
@@ -17,7 +17,7 @@ brew install eyevinn/tools/whip-mpegts
 ### Usage
 
 ```
-./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w]
+./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w] [-s]
 ```
 
 Supplying a file with -f will override MPEG-TS settings, use either MPEG-TS or file input.
@@ -26,6 +26,7 @@ Flags:
 
 - \-t Enable burned in timer
 - \-w Open a local window displaying the video before transcoding for comparison
+- \-s Setup SRT socket in listener mode for receiving MPEG-TS
 
 ### Build Ubuntu 21.10
 
@@ -51,6 +52,12 @@ XCode command line tools installed.
 Install additional dependencies using homebrew:
 ```
 brew install gstreamer gst-plugins-good gst-plugins-bad libsoup@2 cmake gst-libav
+```
+
+On Apple M1 you might need to build the gst-plugins-bad from source as the SRT plugins are not available in the binary bottle.
+
+```
+brew reinstall --build-from-source gst-plugins-bad
 ```
 
 Build:

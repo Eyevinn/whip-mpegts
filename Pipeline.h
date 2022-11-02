@@ -19,7 +19,8 @@ public:
         const uint32_t mpegTsPort,
         const std::chrono::milliseconds mpegTsBufferSize,
         const bool showWindow,
-        const bool showTimer);
+        const bool showTimer,
+        const bool srtTransport);
 
     Pipeline(http::WhipClient& whipClient, std::string&& fileName, const bool showWindow, const bool showTimer);
 
