@@ -1,6 +1,6 @@
 # MPEG-TS client for the WebRTC-HTTP ingestion protocol
 
-MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an MPEG-TS unicast or multicast stream and sends it to a WHIP endpoint.
+MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an MPEG-TS unicast or multicast or [SRT](https://srtalliance.org/) stream and sends it to a WHIP endpoint.
 
 ## Getting started
 
