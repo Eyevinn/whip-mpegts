@@ -45,6 +45,12 @@ Install additional dependencies using homebrew:
 brew install gstreamer gst-plugins-good gst-plugins-bad libsoup@2 cmake gst-libav
 ```
 
+On Apple M1 you might need to build the gst-plugins-bad from source as the SRT plugins are not available in the binary bottle.
+
+```
+brew reinstall --build-from-source gst-plugins-bad
+```
+
 Build:
 
 ```

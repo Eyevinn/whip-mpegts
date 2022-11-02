@@ -12,7 +12,6 @@
 #include <gst/gst.h>
 #include <gst/sdp/sdp.h>
 #include <gst/webrtc/webrtc.h>
-#include <ext/srt/gstsrtsrc.h>
 
 class Pipeline::Impl
 {
@@ -148,29 +147,31 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
 
     g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
 
-    g_object_set(elements_[ElementLabel::SRT_SOURCE],
-        "localaddress",
-        mpegTsAddress.c_str(),
-        "localport",
-        mpegTsPort,
-        "mode",
-        GST_SRT_CONNECTION_MODE_LISTENER,
-        "wait-for-connection",
-        true,
-        "latency",
-        125,
-        nullptr);
-
-    g_object_set(elements_[ElementLabel::UDP_SOURCE],
-        "address",
-        mpegTsAddress.c_str(),
-        "port",
-        mpegTsPort,
-        "auto-multicast",
-        true,
-        "buffer-size",
-        825984,
-        nullptr);
+    if (srtTransport_) {
+        g_object_set(elements_[ElementLabel::SRT_SOURCE],
+            "localaddress",
+            mpegTsAddress.c_str(),
+            "localport",
+            mpegTsPort,
+            "mode",
+            2, // GST_SRT_CONNECTION_MODE_LISTENER,
+            "wait-for-connection",
+            true,
+            "latency",
+            125,
+            nullptr);
+    } else {
+        g_object_set(elements_[ElementLabel::UDP_SOURCE],
+            "address",
+            mpegTsAddress.c_str(),
+            "port",
+            mpegTsPort,
+            "auto-multicast",
+            true,
+            "buffer-size",
+            825984,
+            nullptr);
+    }
 
     g_object_set(elements_[ElementLabel::UDP_QUEUE],
         "min-threshold-time",

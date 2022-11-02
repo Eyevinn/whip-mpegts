@@ -48,7 +48,7 @@ int32_t main(int32_t argc, char** argv)
     auto showWindow = false;
     auto srtTransport = false;
 
-    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:f:tw")) != -1)
+    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:f:tws")) != -1)
     {
         switch (getOptResult)
         {
