@@ -6,7 +6,29 @@ MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an 
 
 Supported platforms are Ubuntu 20.04, 21.10 and OSX.
 
-### Ubuntu 21.10
+### Install binary
+
+Homebrew:
+
+```
+brew install eyevinn/tools/whip-mpegts
+```
+
+### Usage
+
+```
+./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w] [-s]
+```
+
+Supplying a file with -f will override MPEG-TS settings, use either MPEG-TS or file input.
+
+Flags:
+
+- \-t Enable burned in timer
+- \-w Open a local window displaying the video before transcoding for comparison
+- \-s Setup SRT socket in listener mode for receiving MPEG-TS
+
+### Build Ubuntu 21.10
 
 Install dependencies:
 
@@ -21,20 +43,7 @@ cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" .
 make
 ```
 
-Run:
-```
-./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w] [-s]
-```
-
-Supplying a file with -f will override MPEG-TS settings, use either MPEG-TS or file input.
-
-Flags:
-
-- \-t Enable burned in timer
-- \-w Open a local window displaying the video before transcoding for comparison
-- \-s Setup SRT socket in listener mode for receiving MPEG-TS
-
-### OSX
+### Build OSX
 
 Requirements:
 
@@ -58,13 +67,7 @@ cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" .
 make
 ```
 
-Run:
-```
-export GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0/
-./whip-mpegts -a <MPEG-TS address> -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key]
-```
-
-### Docker Container
+### Build Docker Container
 
 Build container (uses multi-stage builds):
 
