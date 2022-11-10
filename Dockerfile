@@ -17,5 +17,6 @@ RUN apt-get -y install libgstreamer1.0-0 gstreamer1.0-plugins-bad gstreamer1.0-p
 
 WORKDIR /app
 COPY --from=0 /src/whip-mpegts ./whip-mpegts
+COPY libgstpango.so /usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstpango.so
 
 ENTRYPOINT ["./whip-mpegts"]
