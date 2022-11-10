@@ -59,6 +59,9 @@ private:
         H264_PARSE,
         H264_DECODE,
 
+        H265_PARSE,
+        H265_DECODE,
+
         VIDEO_CONVERT,
         CONVERT_QUEUE,
 
@@ -105,9 +108,13 @@ private:
 
     void makeElement(const ElementLabel elementLabel, const char* name, const char* element);
     void onH264SinkPadAdded(GstPad* newPad);
+    void onH265SinkPadAdded(GstPad* newPad);
     void onMpeg2SinkPadAdded(GstPad* newPad);
     void onAacSinkPadAdded(GstPad* newPad);
     void onPcmSinkPadAdded(GstPad* newPad);
+
+    GstElement* addClockOverlay(GstElement* lastElement);
+    GstElement* addWindowOutput(GstElement* lastElement);
 };
 
 Pipeline::Impl::Impl(http::WhipClient& whipClient,
@@ -248,6 +255,9 @@ void Pipeline::Impl::init()
 
     makeElement(ElementLabel::H264_PARSE, "H264_PARSE", "h264parse");
     makeElement(ElementLabel::H264_DECODE, "H264_DECODE", "avdec_h264");
+
+    makeElement(ElementLabel::H265_PARSE, "H265_PARSE", "h265parse");
+    makeElement(ElementLabel::H265_DECODE, "H265_DECODE", "avdec_h265");
 
     makeElement(ElementLabel::MPEG2_PARSE, "MPEG2_PARSE", "mpegvideoparse");
     makeElement(ElementLabel::MPEG2_DECODE, "MPEG2_DECODE", "avdec_mpeg2video");
@@ -425,6 +435,10 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
     {
         onH264SinkPadAdded(newPad);
     }
+    else if (g_str_has_prefix(newPadType, "video/x-h265"))
+    {
+        onH265SinkPadAdded(newPad);
+    }
     else if (g_str_has_prefix(newPadType, "video/mpeg"))
     {
         onMpeg2SinkPadAdded(newPad);
@@ -441,6 +455,37 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
     {
         Logger::log("Unsupported MPEG-TS demux pad type %s", newPadType);
     }
+}
+
+GstElement* Pipeline::Impl::addClockOverlay(GstElement* lastElement)
+{
+    if (showTimer_)
+    {
+        if (!gst_element_link_many(lastElement, elements_[ElementLabel::CLOCK_OVERLAY], nullptr))
+        {
+            Logger::log("Video elements could not be linked.");
+            return lastElement;
+        }
+        lastElement = elements_[ElementLabel::CLOCK_OVERLAY];
+    }
+    return lastElement;
+}
+
+GstElement* Pipeline::Impl::addWindowOutput(GstElement* lastElement)
+{
+    if (showWindow_)
+    {
+        if (!gst_element_link_many(lastElement,
+                elements_[ElementLabel::TEE],
+                elements_[ElementLabel::AUTO_VIDEO_SINK],
+                nullptr))
+        {
+            Logger::log("Video elements could not be linked.");
+            return lastElement;
+        }
+        lastElement = elements_[ElementLabel::TEE];
+    }
+    return lastElement;
 }
 
 void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
@@ -460,29 +505,49 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
     }
 
     auto lastElement = elements_[ElementLabel::H264_DECODE];
+    lastElement = addClockOverlay(lastElement);
+    lastElement = addWindowOutput(lastElement);
 
-    if (showTimer_)
+    if (!gst_element_link_many(lastElement,
+            elements_[ElementLabel::VIDEO_CONVERT],
+            elements_[ElementLabel::CONVERT_QUEUE],
+            elements_[ElementLabel::RTP_VIDEO_ENCODE],
+            elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
+            elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
+            nullptr))
     {
-        if (!gst_element_link_many(lastElement, elements_[ElementLabel::CLOCK_OVERLAY], nullptr))
-        {
-            Logger::log("Video elements could not be linked.");
-            return;
-        }
-        lastElement = elements_[ElementLabel::CLOCK_OVERLAY];
+        Logger::log("Video elements could not be linked.");
+        return;
     }
 
-    if (showWindow_)
+    utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+    if (gst_pad_is_linked(sinkPad.get()))
     {
-        if (!gst_element_link_many(lastElement,
-                elements_[ElementLabel::TEE],
-                elements_[ElementLabel::AUTO_VIDEO_SINK],
-                nullptr))
-        {
-            Logger::log("Video elements could not be linked.");
-            return;
-        }
-        lastElement = elements_[ElementLabel::TEE];
+        return;
     }
+
+    gst_pad_link(newPad, sinkPad.get());
+}
+
+void Pipeline::Impl::onH265SinkPadAdded(GstPad* newPad)
+{
+    const auto& findResult = elements_.find(ElementLabel::H265_PARSE);
+    if (findResult == elements_.cend())
+    {
+        return;
+    }
+
+    if (!gst_element_link_many(elements_[ElementLabel::H265_PARSE],
+            elements_[ElementLabel::H265_DECODE],
+            nullptr))
+    {
+        Logger::log("Video elements could not be linked.");
+        return;
+    }
+
+    auto lastElement = elements_[ElementLabel::H265_DECODE];
+    lastElement = addClockOverlay(lastElement);
+    lastElement = addWindowOutput(lastElement);
 
     if (!gst_element_link_many(lastElement,
             elements_[ElementLabel::VIDEO_CONVERT],
