@@ -17,7 +17,7 @@ brew install eyevinn/tools/whip-mpegts
 ### Usage
 
 ```
-./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] [-t] [-w] [-s]
+./whip-mpegts -a [MPEG-TS address] -p <MPEG-TS port> -u <WHIP endpoint URL> -k [WHIP auth key] -d [MPEG-TS buffer size ms] -f [mp4 file input] -r [MPEG-TS restream address] -o [MPEG-TS restream port] [-t] [-w] [-s]
 ```
 
 Supplying a file with -f will override MPEG-TS settings, use either MPEG-TS or file input.
@@ -26,7 +26,7 @@ Flags:
 
 - \-t Enable burned in timer
 - \-w Open a local window displaying the video before transcoding for comparison
-- \-s Setup SRT socket in listener mode for receiving MPEG-TS
+- \-s Setup SRT socket in listener mode for receiving MPEG-TS and also use SRT when restreaming
 
 ### Build Ubuntu 21.10
 
