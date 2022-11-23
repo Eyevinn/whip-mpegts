@@ -20,6 +20,8 @@ public:
         std::string&& mpegTsAddress,
         const uint32_t mpegTsPort,
         const std::chrono::milliseconds mpegTsBufferSize,
+        std::string&& restreamAddress,
+        const uint32_t restreamPort,
         const bool showWindow,
         const bool showTimer,
         const bool srtTransport);
@@ -56,6 +58,11 @@ private:
 
         SRT_SOURCE,
 
+        TEE,
+        RESTREAM_QUEUE,
+        UDP_DEST,
+        SRT_DEST,
+
         H264_PARSE,
         H264_DECODE,
 
@@ -65,7 +72,7 @@ private:
         VIDEO_CONVERT,
         CONVERT_QUEUE,
 
-        TEE,
+        WINDOW_TEE,
         AUTO_VIDEO_SINK,
         CLOCK_OVERLAY,
 
@@ -121,6 +128,8 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
     std::string&& mpegTsAddress,
     const uint32_t mpegTsPort,
     const std::chrono::milliseconds mpegTsBufferSize,
+    std::string&& restreamAddress,
+    const uint32_t restreamPort,
     const bool showWindow,
     const bool showTimer,
     const bool srtTransport)
@@ -130,6 +139,9 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
       showTimer_(showTimer),
       srtTransport_(srtTransport)
 {
+    GstElement* srcElement;
+    GstElement* restreamDestElement;
+
     Logger::log("Creating pipeline mpegTsAddress %s, mpegTsPort %u, mpegTsBufferSize %llu ns, srt=%s",
         mpegTsAddress.c_str(),
         mpegTsPort,
@@ -149,16 +161,9 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
         return;
     }
 
-    if (!srtTransport_) {
+    if (!srtTransport_)
+    {
         makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
-        if (!gst_element_link(
-            elements_[ElementLabel::UDP_SOURCE],
-            elements_[ElementLabel::UDP_QUEUE]))
-        {
-            g_printerr("UDP transport elements could not be linked.\n");
-            return;
-        }
-
         g_object_set(elements_[ElementLabel::UDP_SOURCE],
             "address",
             mpegTsAddress.c_str(),
@@ -169,16 +174,11 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
             "buffer-size",
             825984,
             nullptr);        
-    } else {
+        srcElement = elements_[ElementLabel::UDP_SOURCE];
+    }
+    else
+    {
         makeElement(ElementLabel::SRT_SOURCE, "SRT_SOURCE", "srtsrc");
-        if (!gst_element_link(
-            elements_[ElementLabel::SRT_SOURCE],
-            elements_[ElementLabel::UDP_QUEUE]))
-        {
-            g_printerr("SRT transport elements could not be linked.\n");
-            return;
-        }
-
         g_object_set(elements_[ElementLabel::SRT_SOURCE],
             "localaddress",
             mpegTsAddress.c_str(),
@@ -191,6 +191,77 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
             "latency",
             125,
             nullptr);        
+        srcElement = elements_[ElementLabel::SRT_SOURCE];
+    }
+
+    if (!restreamAddress.empty())
+    {
+        Logger::log("Restreaming (pass-through) to %s:%u srt=%s",
+            restreamAddress.c_str(),
+            restreamPort,
+            srtTransport_ ? "true": "false");
+        makeElement(ElementLabel::TEE, "TEE", "tee");
+        makeElement(ElementLabel::RESTREAM_QUEUE, "RESTREAM_QUEUE", "queue");
+        if (!gst_element_link_many(
+            srcElement,
+            elements_[ElementLabel::TEE],
+            elements_[ElementLabel::RESTREAM_QUEUE],
+            nullptr))
+        {
+            g_printerr("Failed to connect to restream tee to restream queue.\n");
+            return;
+        }
+
+        if (!srtTransport_)
+        {
+            makeElement(ElementLabel::UDP_DEST, "UDP_DEST", "udpsink");
+            g_object_set(elements_[ElementLabel::UDP_DEST],
+                "host",
+                restreamAddress.c_str(),
+                "port",
+                restreamPort,
+                nullptr);
+
+            restreamDestElement = elements_[ElementLabel::UDP_DEST];
+        }
+        else
+        {
+            makeElement(ElementLabel::SRT_DEST, "SRT_DEST", "srtsink");
+            std::string restreamUri = "srt://" + restreamAddress + ":" + std::to_string(restreamPort);
+            Logger::log("SRT restream=%s", restreamUri.c_str());
+
+            g_object_set(elements_[ElementLabel::SRT_DEST],
+                "uri",
+                restreamUri.c_str(),
+                "mode",
+                1, // GST_SRT_CONNECTION_MODE_CALLER
+                "wait-for-connection",
+                false,
+                "latency",
+                125,
+                nullptr);
+
+            restreamDestElement = elements_[ElementLabel::SRT_DEST];
+        }
+
+        if (!gst_element_link(
+            elements_[ElementLabel::RESTREAM_QUEUE],
+            restreamDestElement))
+        {
+            g_printerr("Restream destination elements could not be linked.\n");
+            return;
+        }
+
+        srcElement = elements_[ElementLabel::TEE];
+    }
+
+
+    if (!gst_element_link(
+        srcElement,
+        elements_[ElementLabel::UDP_QUEUE]))
+    {
+        g_printerr("Failed to connect source with queue.\n");
+        return;
     }
 
     g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
@@ -283,7 +354,7 @@ void Pipeline::Impl::init()
 
     if (showWindow_)
     {
-        makeElement(ElementLabel::TEE, "TEE", "tee");
+        makeElement(ElementLabel::WINDOW_TEE, "WINDOW_TEE", "tee");
         makeElement(ElementLabel::AUTO_VIDEO_SINK, "AUTO_VIDEO_SINK", "autovideosink");
     }
 
@@ -476,14 +547,14 @@ GstElement* Pipeline::Impl::addWindowOutput(GstElement* lastElement)
     if (showWindow_)
     {
         if (!gst_element_link_many(lastElement,
-                elements_[ElementLabel::TEE],
+                elements_[ElementLabel::WINDOW_TEE],
                 elements_[ElementLabel::AUTO_VIDEO_SINK],
                 nullptr))
         {
             Logger::log("Video elements could not be linked.");
             return lastElement;
         }
-        lastElement = elements_[ElementLabel::TEE];
+        lastElement = elements_[ElementLabel::WINDOW_TEE];
     }
     return lastElement;
 }
@@ -796,6 +867,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient,
     std::string&& mpegTsAddress,
     const uint32_t mpegTsPort,
     const std::chrono::milliseconds mpegTsBufferSize,
+    std::string&& restreamAddress,
+    const uint32_t restreamPort,
     const bool showWindow,
     const bool showTimer,
     const bool srtTransport)
@@ -803,6 +876,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient,
           std::move(mpegTsAddress),
           mpegTsPort,
           mpegTsBufferSize,
+          std::move(restreamAddress),
+          restreamPort,
           showWindow,
           showTimer,
           srtTransport))

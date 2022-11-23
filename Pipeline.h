@@ -18,6 +18,8 @@ public:
         std::string&& mpegTsAddress,
         const uint32_t mpegTsPort,
         const std::chrono::milliseconds mpegTsBufferSize,
+        std::string&& restreamAddress,
+        const uint32_t restreamPort,
         const bool showWindow,
         const bool showTimer,
         const bool srtTransport);

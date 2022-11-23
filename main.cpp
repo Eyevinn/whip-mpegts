@@ -11,7 +11,9 @@ namespace
 
 const char* usageString =
     "Usage: whip-mpegts -a [MPEG-TS address] -p [MPEG-TS port] -f [mp4 input file] -u <WHIP endpoint URL> -k "
-    "[WHIP auth key] -d [MPEG-TS buffer size ms] [-t] [-w] [-s]";
+    "[WHIP auth key] -d [MPEG-TS buffer size ms] "
+    "-r [restream address] -o [restream port] "
+    "[-t] [-w] [-s]";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -40,7 +42,9 @@ int32_t main(int32_t argc, char** argv)
     std::string url;
     std::string authKey;
     std::string mpegTsAddress = "0.0.0.0";
+    std::string restreamAddress = "";
     uint32_t mpegTsPort = 0;
+    uint32_t restreamPort = 0;
     int32_t getOptResult;
     std::chrono::milliseconds mpegTsBufferSize(1000);
     std::string fileName;
@@ -48,7 +52,7 @@ int32_t main(int32_t argc, char** argv)
     auto showWindow = false;
     auto srtTransport = false;
 
-    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:f:tws")) != -1)
+    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:f:r:o:tws")) != -1)
     {
         switch (getOptResult)
         {
@@ -70,6 +74,12 @@ int32_t main(int32_t argc, char** argv)
         case 'f':
             fileName = optarg;
             break;
+        case 'r':
+            restreamAddress = optarg;
+            break;
+        case 'o':
+            restreamPort = std::strtoul(optarg, nullptr, 10);
+            break;
         case 't':
             showTimer = true;
             break;
@@ -90,6 +100,11 @@ int32_t main(int32_t argc, char** argv)
         printf("%s\n", usageString);
         return 1;
     }
+    if (!restreamAddress.empty() && restreamPort == 0)
+    {
+        printf("Missing restream port.\n%s\n", usageString);
+        return 1;
+    }
 
     mainLoop = g_main_loop_new(nullptr, FALSE);
 
@@ -104,6 +119,8 @@ int32_t main(int32_t argc, char** argv)
             std::move(mpegTsAddress),
             mpegTsPort,
             mpegTsBufferSize,
+            std::move(restreamAddress),
+            restreamPort,
             showWindow,
             showTimer,
             srtTransport);
