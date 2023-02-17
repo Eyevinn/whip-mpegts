@@ -46,7 +46,7 @@ int32_t main(int32_t argc, char** argv)
     uint32_t mpegTsPort = 0;
     uint32_t restreamPort = 0;
     int32_t getOptResult;
-    std::chrono::milliseconds mpegTsBufferSize(1000);
+    std::chrono::milliseconds mpegTsBufferSize(0);
     std::string fileName;
     auto showTimer = false;
     auto showWindow = false;

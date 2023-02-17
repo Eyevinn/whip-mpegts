@@ -70,7 +70,6 @@ private:
         H265_DECODE,
 
         VIDEO_CONVERT,
-        CONVERT_QUEUE,
 
         WINDOW_TEE,
         AUTO_VIDEO_SINK,
@@ -264,6 +263,7 @@ Pipeline::Impl::Impl(http::WhipClient& whipClient,
         return;
     }
 
+    g_object_set(elements_[ElementLabel::TS_DEMUX], "latency", 0, nullptr);
     g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
 
     g_object_set(elements_[ElementLabel::UDP_QUEUE],
@@ -322,7 +322,6 @@ void Pipeline::Impl::init()
     pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
 
     makeElement(ElementLabel::VIDEO_CONVERT, "VIDEO_CONVERT", "videoconvert");
-    makeElement(ElementLabel::CONVERT_QUEUE, "CONVERT_QUEUE", "videoconvert");
 
     makeElement(ElementLabel::H264_PARSE, "H264_PARSE", "h264parse");
     makeElement(ElementLabel::H264_DECODE, "H264_DECODE", "avdec_h264");
@@ -420,6 +419,8 @@ void Pipeline::Impl::init()
         "stun://stun.l.google.com:19302",
         "bundle-policy",
         GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE,
+        "latency",
+        100,
         nullptr);
     gst_element_sync_state_with_parent(elements_[ElementLabel::WEBRTC_BIN]);
 
@@ -581,7 +582,6 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
 
     if (!gst_element_link_many(lastElement,
             elements_[ElementLabel::VIDEO_CONVERT],
-            elements_[ElementLabel::CONVERT_QUEUE],
             elements_[ElementLabel::RTP_VIDEO_ENCODE],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
@@ -622,7 +622,6 @@ void Pipeline::Impl::onH265SinkPadAdded(GstPad* newPad)
 
     if (!gst_element_link_many(lastElement,
             elements_[ElementLabel::VIDEO_CONVERT],
-            elements_[ElementLabel::CONVERT_QUEUE],
             elements_[ElementLabel::RTP_VIDEO_ENCODE],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
