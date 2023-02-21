@@ -28,39 +28,39 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
 
     pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
 
-    makeElement(ElementLabel::VIDEO_CONVERT, "VIDEO_CONVERT", "videoconvert");
+    makeElement(ElementLabel::VIDEO_CONVERT, "videoconvert");
 
-    makeElement(ElementLabel::H264_PARSE, "H264_PARSE", "h264parse");
-    makeElement(ElementLabel::H264_DECODE, "H264_DECODE", "avdec_h264");
+    makeElement(ElementLabel::H264_PARSE, "h264parse");
+    makeElement(ElementLabel::H264_DECODE, "avdec_h264");
 
-    makeElement(ElementLabel::H265_PARSE, "H265_PARSE", "h265parse");
-    makeElement(ElementLabel::H265_DECODE, "H265_DECODE", "avdec_h265");
+    makeElement(ElementLabel::H265_PARSE, "h265parse");
+    makeElement(ElementLabel::H265_DECODE, "avdec_h265");
 
-    makeElement(ElementLabel::MPEG2_PARSE, "MPEG2_PARSE", "mpegvideoparse");
-    makeElement(ElementLabel::MPEG2_DECODE, "MPEG2_DECODE", "avdec_mpeg2video");
+    makeElement(ElementLabel::MPEG2_PARSE, "mpegvideoparse");
+    makeElement(ElementLabel::MPEG2_DECODE, "avdec_mpeg2video");
 
-    makeElement(ElementLabel::RTP_VIDEO_ENCODE, "RTP_VIDEO_ENCODE", "vp8enc");
-    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD, "RTP_VIDEO_PAYLOAD", "rtpvp8pay");
-    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE, "RTP_VIDEO_PAYLOAD_QUEUE", "queue");
-    makeElement(ElementLabel::RTP_VIDEO_FILTER, "RTP_VIDEO_FILTER", "capsfilter");
+    makeElement(ElementLabel::RTP_VIDEO_ENCODE, "vp8enc");
+    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD, "rtpvp8pay");
+    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE, "queue");
+    makeElement(ElementLabel::RTP_VIDEO_FILTER, "capsfilter");
 
-    makeElement(ElementLabel::AAC_PARSE, "AAC_PARSE", "aacparse");
-    makeElement(ElementLabel::AAC_DECODE, "AAC_DECODE", "avdec_aac");
+    makeElement(ElementLabel::AAC_PARSE, "aacparse");
+    makeElement(ElementLabel::AAC_DECODE, "avdec_aac");
 
-    makeElement(ElementLabel::PCM_PARSE, "PCM_PARSE", "rawaudioparse");
+    makeElement(ElementLabel::PCM_PARSE, "rawaudioparse");
 
-    makeElement(ElementLabel::AUDIO_CONVERT, "AUDIO_CONVERT", "audioconvert");
-    makeElement(ElementLabel::AUDIO_RESAMPLE, "AUDIO_RESAMPLE", "audioresample");
-    makeElement(ElementLabel::RTP_AUDIO_ENCODE, "RTP_AUDIO_ENCODE", "opusenc");
-    makeElement(ElementLabel::RTP_AUDIO_PAYLOAD, "RTP_AUDIO_PAYLOAD", "rtpopuspay");
-    makeElement(ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE, "RTP_AUDIO_PAYLOAD_QUEUE", "queue");
-    makeElement(ElementLabel::RTP_AUDIO_FILTER, "RTP_AUDIO_FILTER", "capsfilter");
+    makeElement(ElementLabel::AUDIO_CONVERT, "audioconvert");
+    makeElement(ElementLabel::AUDIO_RESAMPLE, "audioresample");
+    makeElement(ElementLabel::RTP_AUDIO_ENCODE, "opusenc");
+    makeElement(ElementLabel::RTP_AUDIO_PAYLOAD, "rtpopuspay");
+    makeElement(ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE, "queue");
+    makeElement(ElementLabel::RTP_AUDIO_FILTER, "capsfilter");
 
-    makeElement(ElementLabel::WEBRTC_BIN, "WEBRTC_BIN", "webrtcbin");
+    makeElement(ElementLabel::WEBRTC_BIN, "webrtcbin");
 
     if (config.showTimer_)
     {
-        makeElement(ElementLabel::CLOCK_OVERLAY, "CLOCK_OVERLAY", "clockoverlay");
+        makeElement(ElementLabel::CLOCK_OVERLAY, "clockoverlay");
     }
 
     pipelineMessageBus_ = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
@@ -131,8 +131,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         this);
     g_signal_connect(elements_[ElementLabel::WEBRTC_BIN], "on-ice-candidate", G_CALLBACK(onIceCandidateCallback), this);
 
-    makeElement(ElementLabel::UDP_QUEUE, "UDP_QUEUE", "queue");
-    makeElement(ElementLabel::TS_DEMUX, "TS_DEMUX", "tsdemux");
+    makeElement(ElementLabel::UDP_QUEUE, "queue");
+    makeElement(ElementLabel::TS_DEMUX, "tsdemux");
     if (!gst_element_link_many(elements_[ElementLabel::UDP_QUEUE], elements_[ElementLabel::TS_DEMUX], nullptr))
     {
         g_printerr("UDP source elements could not be linked.\n");
@@ -141,7 +141,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
 
     if (!config.srtTransport_)
     {
-        makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
+        makeElement(ElementLabel::UDP_SOURCE, "udpsrc");
         g_object_set(elements_[ElementLabel::UDP_SOURCE],
             "address",
             config.udpSourceAddress_.c_str(),
@@ -156,7 +156,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     }
     else
     {
-        makeElement(ElementLabel::SRT_SOURCE, "SRT_SOURCE", "srtsrc");
+        makeElement(ElementLabel::SRT_SOURCE, "srtsrc");
         g_object_set(elements_[ElementLabel::SRT_SOURCE],
             "localaddress",
             config.udpSourceAddress_.c_str(),
@@ -178,8 +178,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             config.restreamAddress_.c_str(),
             config.restreamPort_,
             config.srtTransport_ ? "true" : "false");
-        makeElement(ElementLabel::TEE, "TEE", "tee");
-        makeElement(ElementLabel::RESTREAM_QUEUE, "RESTREAM_QUEUE", "queue");
+        makeElement(ElementLabel::TEE, "tee");
+        makeElement(ElementLabel::RESTREAM_QUEUE, "queue");
         if (!gst_element_link_many(srcElement,
                 elements_[ElementLabel::TEE],
                 elements_[ElementLabel::RESTREAM_QUEUE],
@@ -191,7 +191,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
 
         if (!config.srtTransport_)
         {
-            makeElement(ElementLabel::UDP_DEST, "UDP_DEST", "udpsink");
+            makeElement(ElementLabel::UDP_DEST, "udpsink");
             g_object_set(elements_[ElementLabel::UDP_DEST],
                 "host",
                 config.restreamAddress_.c_str(),
@@ -203,7 +203,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         }
         else
         {
-            makeElement(ElementLabel::SRT_DEST, "SRT_DEST", "srtsink");
+            makeElement(ElementLabel::SRT_DEST, "srtsink");
             std::string restreamUri = "srt://";
             restreamUri.append(config.restreamAddress_);
             restreamUri.append(":");
@@ -639,9 +639,9 @@ void Pipeline::onIceCandidate(guint /*mLineIndex*/, gchar* candidate)
     whipClient_.updateIce(whipResource_, etag_, candidateString.data());
 }
 
-void Pipeline::makeElement(const ElementLabel elementLabel, const char* name, const char* element)
+void Pipeline::makeElement(const ElementLabel elementLabel, const char* element)
 {
-    const auto& result = elements_.emplace(elementLabel, gst_element_factory_make(element, name));
+    const auto& result = elements_.emplace(elementLabel, gst_element_factory_make(element, nullptr));
     if (!result.first->second)
     {
         Logger::log("Unable to make gst element %s", element);
@@ -657,7 +657,7 @@ void Pipeline::makeElement(const ElementLabel elementLabel, const char* name, co
 
     if (!gst_bin_add(GST_BIN(pipeline_), result.first->second))
     {
-        Logger::log("Unable to add gst element %s", name);
+        Logger::log("Unable to add gst element %s", element);
         return;
     }
 }

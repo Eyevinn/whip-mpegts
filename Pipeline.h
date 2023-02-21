@@ -95,7 +95,7 @@ private:
     std::string whipResource_;
     std::string etag_;
 
-    void makeElement(const ElementLabel elementLabel, const char* name, const char* element);
+    void makeElement(const ElementLabel elementLabel, const char* element);
     void onH264SinkPadAdded(GstPad* newPad);
     void onH265SinkPadAdded(GstPad* newPad);
     void onMpeg2SinkPadAdded(GstPad* newPad);
