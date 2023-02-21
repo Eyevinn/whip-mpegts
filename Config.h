@@ -19,41 +19,59 @@ struct Config
           srtTransport_(false),
           tsDemuxLatency_(0),
           jitterBufferLatency_(0),
-          srtSourceLatency_(125)
+          srtSourceLatency_(125),
+          audio_(true),
+          video_(true)
     {
     }
 
     std::string toString()
     {
-        std::array<char, 2048> result{};
-        snprintf(result.data(),
-            result.size(),
-            "whipEndpointUrl: %s\n"
-            "whipEndpointAuthKey: %s,\n"
-            "udpSourceAddress: %s,\n"
-            "udpSourcePort: %u,\n"
-            "udpSourceQueueMinTime: %lu,\n"
-            "restreamAddress: %s,\n"
-            "restreamPort: %u,\n"
-            "showTimer: %c,\n"
-            "srtTransport %c,\n"
-            "tsDemuxLatency: %u,\n"
-            "jitterBufferLatency %u,\n"
-            "srtSourceLatency %u\n",
-            whipEndpointUrl_.c_str(),
-            whipEndpointAuthKey_.empty() ? "unset" : "set",
-            udpSourceAddress_.c_str(),
-            udpSourcePort_,
-            udpSourceQueueMinTime_.count(),
-            restreamAddress_.empty() ? "unset" : restreamAddress_.c_str(),
-            restreamPort_,
-            showTimer_ ? 't' : 'f',
-            srtTransport_ ? 't' : 'f',
-            tsDemuxLatency_,
-            jitterBufferLatency_,
-            srtSourceLatency_);
+        std::string result;
+        result.append("whipEndpointUrl: ");
+        result.append(whipEndpointUrl_);
+        result.append("\n");
+        result.append("whipEndpointAuthKey: ");
+        result.append(whipEndpointAuthKey_.empty() ? "unset" : "set");
+        result.append("\n");
+        result.append("udpSourceAddress: ");
+        result.append(udpSourceAddress_);
+        result.append("\n");
+        result.append("udpSourcePort: ");
+        result.append(std::to_string(udpSourcePort_));
+        result.append("\n");
+        result.append("udpSourceQueueMinTime: ");
+        result.append(std::to_string(udpSourceQueueMinTime_.count()));
+        result.append("\n");
+        result.append("restreamAddress: ");
+        result.append(restreamAddress_.empty() ? "unset" : restreamAddress_);
+        result.append("\n");
+        result.append("restreamPort: ");
+        result.append(std::to_string(restreamPort_));
+        result.append("\n");
+        result.append("showTimer: ");
+        result.append(showTimer_ ? "true" : "false");
+        result.append("\n");
+        result.append("srtTransport: ");
+        result.append(srtTransport_ ? "true" : "false");
+        result.append("\n");
+        result.append("tsDemuxLatency: ");
+        result.append(std::to_string(tsDemuxLatency_));
+        result.append("\n");
+        result.append("jitterBufferLatency: ");
+        result.append(std::to_string(jitterBufferLatency_));
+        result.append("\n");
+        result.append("srtSourceLatency: ");
+        result.append(std::to_string(srtSourceLatency_));
+        result.append("\n");
+        result.append("audio: ");
+        result.append(audio_ ? "true" : "false");
+        result.append("\n");
+        result.append("video: ");
+        result.append(video_ ? "true" : "false");
+        result.append("\n");
 
-        return result.data();
+        return result;
     }
 
     std::string whipEndpointUrl_;
@@ -69,4 +87,7 @@ struct Config
     uint32_t tsDemuxLatency_;
     uint32_t jitterBufferLatency_;
     uint32_t srtSourceLatency_;
+
+    bool audio_;
+    bool video_;
 };

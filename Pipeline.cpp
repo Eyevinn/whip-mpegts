@@ -72,37 +72,43 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         1,
         nullptr);
 
-    utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
-        "media",
-        G_TYPE_STRING,
-        "audio",
-        "payload",
-        G_TYPE_INT,
-        111,
-        "encoding-name",
-        G_TYPE_STRING,
-        "OPUS",
-        nullptr));
+    if (config.audio_)
+    {
+        utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
+            "media",
+            G_TYPE_STRING,
+            "audio",
+            "payload",
+            G_TYPE_INT,
+            111,
+            "encoding-name",
+            G_TYPE_STRING,
+            "OPUS",
+            nullptr));
 
-    gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
-        elements_[ElementLabel::WEBRTC_BIN],
-        rtpAudioFilterCaps.get());
+        gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+            elements_[ElementLabel::WEBRTC_BIN],
+            rtpAudioFilterCaps.get());
+    }
 
-    utils::ScopedGstObject rtpVideoFilterCaps(gst_caps_new_simple("application/x-rtp",
-        "media",
-        G_TYPE_STRING,
-        "video",
-        "payload",
-        G_TYPE_INT,
-        96,
-        "encoding-name",
-        G_TYPE_STRING,
-        "VP8",
-        nullptr));
+    if (config.video_)
+    {
+        utils::ScopedGstObject rtpVideoFilterCaps(gst_caps_new_simple("application/x-rtp",
+            "media",
+            G_TYPE_STRING,
+            "video",
+            "payload",
+            G_TYPE_INT,
+            96,
+            "encoding-name",
+            G_TYPE_STRING,
+            "VP8",
+            nullptr));
 
-    gst_element_link_filtered(elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
-        elements_[ElementLabel::WEBRTC_BIN],
-        rtpVideoFilterCaps.get());
+        gst_element_link_filtered(elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
+            elements_[ElementLabel::WEBRTC_BIN],
+            rtpVideoFilterCaps.get());
+    }
 
     g_object_set(elements_[ElementLabel::WEBRTC_BIN],
         "name",
@@ -483,22 +489,7 @@ void Pipeline::onNegotiationNeeded()
             g_object_set(transceiver, "direction", GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY, nullptr);
         }
         g_object_set(transceiver, "fec-type", GST_WEBRTC_FEC_TYPE_NONE, nullptr);
-    }
-
-    if (transceivers->len == 1)
-    {
-        auto transceiver = g_array_index(transceivers, GstWebRTCRTPTransceiver*, 0);
         g_object_set(transceiver, "do-nack", TRUE, nullptr);
-    }
-    else if (transceivers->len == 2)
-    {
-        auto transceiver = g_array_index(transceivers, GstWebRTCRTPTransceiver*, 1);
-        g_object_set(transceiver, "do-nack", TRUE, nullptr);
-    }
-    else
-    {
-        Logger::log("Expected 1 or 2 trancievers, but there are %u available. Not enabling NACK/RTX.",
-            transceivers->len);
     }
 
     auto promise = gst_promise_new_with_change_func(onOfferCreatedCallback, this, nullptr);

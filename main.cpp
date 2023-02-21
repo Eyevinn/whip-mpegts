@@ -23,6 +23,8 @@ namespace
     {"tsDemuxLatency", required_argument, nullptr, 0},
     {"jitterBufferLatency", required_argument, nullptr, 0},
     {"srtSourceLatency", required_argument, nullptr, 0},
+    {"no-audio", no_argument, nullptr, 0},
+    {"no-video", no_argument, nullptr, 0},
     {nullptr, no_argument, nullptr, 0}};
 
 const auto shortOptions = "a:p:u:k:d:r:o:ts";
@@ -39,7 +41,9 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  -s, --srtTransport\n"
                           "  --tsDemuxLatency INT\n"
                           "  --jitterBufferLatency INT\n"
-                          "  --srtSourceLatency INT\n";
+                          "  --srtSourceLatency INT\n"
+                          "  --no-audio\n"
+                          "  --no-video\n";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -116,6 +120,12 @@ int32_t main(int32_t argc, char** argv)
             break;
         case 11:
             config.srtSourceLatency_ = std::strtoul(optarg, nullptr, 10);
+            break;
+        case 12:
+            config.audio_ = false;
+            break;
+        case 13:
+            config.video_ = false;
             break;
         default:
             break;
