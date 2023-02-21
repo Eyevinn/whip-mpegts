@@ -15,15 +15,6 @@
 
 Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipClient_(whipClient), config_(config)
 {
-    GstElement* srcElement;
-    GstElement* restreamDestElement;
-
-    Logger::log("Creating pipeline mpegTsAddress %s, mpegTsPort %u, mpegTsBufferSize %llu ns, srt=%s",
-        config.udpSourceAddress_.c_str(),
-        config.udpSourcePort_,
-        std::chrono::nanoseconds(config.udpSourceQueueMinTime_).count(),
-        config.srtTransport_ ? "true" : "false");
-
     gst_init(nullptr, nullptr);
 
     pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
@@ -139,6 +130,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         return;
     }
 
+    GstElement* srcElement;
     if (!config.srtTransport_)
     {
         makeElement(ElementLabel::UDP_SOURCE, "udpsrc");
@@ -189,6 +181,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             return;
         }
 
+        GstElement* restreamDestElement;
         if (!config.srtTransport_)
         {
             makeElement(ElementLabel::UDP_DEST, "udpsink");
