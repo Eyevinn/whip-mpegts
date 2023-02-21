@@ -1,19 +1,49 @@
+#include "Config.h"
 #include "http/WhipClient.h"
+#include "Logger.h"
 #include "Pipeline.h"
 #include <chrono>
 #include <csignal>
 #include <cstdint>
+#include <getopt.h>
 #include <glib-2.0/glib.h>
-#include <unistd.h>
 
 namespace
 {
 
-const char* usageString =
-    "Usage: whip-mpegts -a [MPEG-TS address] -p [MPEG-TS port] -f [mp4 input file] -u <WHIP endpoint URL> -k "
-    "[WHIP auth key] -d [MPEG-TS buffer size ms] "
-    "-r [restream address] -o [restream port] "
-    "[-t] [-w] [-s]";
+::option longOptions[] = {{"udpSourceAddress", required_argument, nullptr, 'a'},
+    {"udpSourcePort", required_argument, nullptr, 'p'},
+    {"whipEndpointUrl", required_argument, nullptr, 'u'},
+    {"whipEndpointAuthKey", required_argument, nullptr, 'k'},
+    {"udpSourceQueueMinTime", required_argument, nullptr, 'd'},
+    {"restreamAddress", required_argument, nullptr, 'r'},
+    {"restreamPort", required_argument, nullptr, 'o'},
+    {"showTimer", no_argument, nullptr, 't'},
+    {"srtTransport", no_argument, nullptr, 's'},
+    {"tsDemuxLatency", required_argument, nullptr, 0},
+    {"jitterBufferLatency", required_argument, nullptr, 0},
+    {"srtSourceLatency", required_argument, nullptr, 0},
+    {"no-audio", no_argument, nullptr, 0},
+    {"no-video", no_argument, nullptr, 0},
+    {nullptr, no_argument, nullptr, 0}};
+
+const auto shortOptions = "a:p:u:k:d:r:o:ts";
+
+const char* usageString = "Usage: whip-mpegts [OPTION]\n"
+                          "  -a, --udpSourceAddress STRING\n"
+                          "  -p, --udpSourcePort INT\n"
+                          "  -u, --whipEndpointUrl STRING\n"
+                          "  -k, --whipEndpointAuthKey STRING\n"
+                          "  -d, --udpSourceQueueMinTime INT ms\n"
+                          "  -r, --restreamAddress STRING\n"
+                          "  -o, --restreamPort INT\n"
+                          "  -t, --showTimer\n"
+                          "  -s, --srtTransport\n"
+                          "  --tsDemuxLatency INT\n"
+                          "  --jitterBufferLatency INT\n"
+                          "  --srtSourceLatency INT\n"
+                          "  --no-audio\n"
+                          "  --no-video\n";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -39,92 +69,81 @@ int32_t main(int32_t argc, char** argv)
         sigaction(SIGINT, &sigactionData, nullptr);
     }
 
-    std::string url;
-    std::string authKey;
-    std::string mpegTsAddress = "0.0.0.0";
-    std::string restreamAddress = "";
-    uint32_t mpegTsPort = 0;
-    uint32_t restreamPort = 0;
+    Config config;
     int32_t getOptResult;
-    std::chrono::milliseconds mpegTsBufferSize(1000);
-    std::string fileName;
-    auto showTimer = false;
-    auto showWindow = false;
-    auto srtTransport = false;
+    int32_t optIndex;
 
-    while ((getOptResult = getopt(argc, argv, "a:p:u:k:d:f:r:o:tws")) != -1)
+    while ((getOptResult = getopt_long(argc, argv, shortOptions, longOptions, &optIndex)) != -1)
     {
         switch (getOptResult)
         {
         case 'a':
-            mpegTsAddress = optarg;
+            config.udpSourceAddress_ = optarg;
             break;
         case 'p':
-            mpegTsPort = std::strtoul(optarg, nullptr, 10);
+            config.udpSourcePort_ = std::strtoul(optarg, nullptr, 10);
             break;
         case 'u':
-            url = optarg;
+            config.whipEndpointUrl_ = optarg;
             break;
         case 'k':
-            authKey = optarg;
+            config.whipEndpointAuthKey_ = optarg;
             break;
         case 'd':
-            mpegTsBufferSize = std::chrono::milliseconds(std::strtoull(optarg, nullptr, 10));
-            break;
-        case 'f':
-            fileName = optarg;
+            config.udpSourceQueueMinTime_ = std::chrono::milliseconds(std::strtoull(optarg, nullptr, 10));
             break;
         case 'r':
-            restreamAddress = optarg;
+            config.restreamAddress_ = optarg;
             break;
         case 'o':
-            restreamPort = std::strtoul(optarg, nullptr, 10);
+            config.restreamPort_ = std::strtoul(optarg, nullptr, 10);
             break;
         case 't':
-            showTimer = true;
-            break;
-        case 'w':
-            showWindow = true;
+            config.showTimer_ = true;
             break;
         case 's':
-            srtTransport = true;
+            config.srtTransport_ = true;
+            break;
+        case 0:
             break;
         default:
-            printf("%s\n", usageString);
-            return 1;
+            break;
+        }
+
+        switch (optIndex)
+        {
+        case 9:
+            config.tsDemuxLatency_ = std::strtoul(optarg, nullptr, 10);
+            break;
+        case 10:
+            config.jitterBufferLatency_ = std::strtoul(optarg, nullptr, 10);
+            break;
+        case 11:
+            config.srtSourceLatency_ = std::strtoul(optarg, nullptr, 10);
+            break;
+        case 12:
+            config.audio_ = false;
+            break;
+        case 13:
+            config.video_ = false;
+            break;
+        default:
+            break;
         }
     }
 
-    if (url.empty() || ((mpegTsAddress.empty() || mpegTsPort == 0) && fileName.empty()))
+    if (config.whipEndpointUrl_.empty() || config.udpSourcePort_ == 0 ||
+        (!config.restreamAddress_.empty() && config.restreamPort_ == 0))
     {
         printf("%s\n", usageString);
         return 1;
     }
-    if (!restreamAddress.empty() && restreamPort == 0)
-    {
-        printf("Missing restream port.\n%s\n", usageString);
-        return 1;
-    }
+    Logger::log("Config:\n%s", config.toString().c_str());
 
     mainLoop = g_main_loop_new(nullptr, FALSE);
 
-    http::WhipClient whipClient(std::move(url), std::move(authKey));
-    if (!fileName.empty())
-    {
-        pipeline = std::make_unique<Pipeline>(whipClient, std::move(fileName), showWindow, showTimer);
-    }
-    else
-    {
-        pipeline = std::make_unique<Pipeline>(whipClient,
-            std::move(mpegTsAddress),
-            mpegTsPort,
-            mpegTsBufferSize,
-            std::move(restreamAddress),
-            restreamPort,
-            showWindow,
-            showTimer,
-            srtTransport);
-    }
+    http::WhipClient whipClient(config.whipEndpointUrl_, config.whipEndpointAuthKey_);
+    pipeline = std::make_unique<Pipeline>(whipClient, config);
     pipeline->run();
 
     g_main_loop_run(mainLoop);

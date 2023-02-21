@@ -24,10 +24,10 @@ struct WhipClient::OpaqueSoupData
     SoupSession* soupSession_;
 };
 
-WhipClient::WhipClient(std::string&& url, std::string&& authKey)
-    : data_(std::make_unique<OpaqueSoupData>()),
-      url_(std::move(url)),
-      authKey_(std::move(authKey))
+WhipClient::WhipClient(const std::string& url, const std::string& authKey)
+    : data_(new OpaqueSoupData()),
+      url_(url),
+      authKey_(authKey)
 {
     data_->soupSession_ =
         soup_session_new_with_options(SOUP_SESSION_TIMEOUT, 5, SOUP_SESSION_SSL_STRICT, FALSE, nullptr);
@@ -38,7 +38,13 @@ WhipClient::WhipClient(std::string&& url, std::string&& authKey)
     }
 }
 
-WhipClient::~WhipClient() {}
+WhipClient::~WhipClient()
+{
+    if (data_)
+    {
+        delete data_;
+    }
+}
 
 WhipClient::SendOfferResult WhipClient::sendOffer(const std::string& sdp)
 {
