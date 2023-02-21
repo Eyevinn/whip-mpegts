@@ -1,6 +1,7 @@
 #define GST_USE_UNSTABLE_API 1
 
 #include "Pipeline.h"
+#include "Config.h"
 #include "http/WhipClient.h"
 #include "Logger.h"
 #include "utils/ScopedGLibMem.h"
@@ -9,314 +10,20 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <gst/gst.h>
 #include <gst/sdp/sdp.h>
 #include <gst/webrtc/webrtc.h>
 
-class Pipeline::Impl
-{
-public:
-    Impl(http::WhipClient& whipClient,
-        std::string&& mpegTsAddress,
-        const uint32_t mpegTsPort,
-        const std::chrono::milliseconds mpegTsBufferSize,
-        std::string&& restreamAddress,
-        const uint32_t restreamPort,
-        const bool showWindow,
-        const bool showTimer,
-        const bool srtTransport);
-
-    Impl(http::WhipClient& whipClient, std::string&& fileName, const bool showWindow, const bool showTimer);
-
-    ~Impl();
-
-    void init();
-    void run();
-    void stop();
-
-    void onPipelineMessage(GstMessage* message);
-    void onDemuxPadAdded(GstPad* newPad);
-    void onOfferCreated(GstPromise* promise);
-    void onNegotiationNeeded();
-    void onIceCandidate(guint mLineIndex, gchar* candidate);
-
-    static gboolean pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData);
-    static void demuxPadAddedCallback(GstElement* /*src*/, GstPad* newPad, gpointer userData);
-    static void onOfferCreatedCallback(GstPromise* promise, gpointer userData);
-    static void onNegotiationNeededCallback(GstElement* /*webRtcBin*/, gpointer userData);
-    static void onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, gchar* candidate, gpointer userData);
-
-private:
-    enum class ElementLabel
-    {
-        UDP_SOURCE,
-        UDP_QUEUE,
-        TS_DEMUX,
-
-        FILE_SOURCE,
-        QT_DEMUX,
-
-        SRT_SOURCE,
-
-        TEE,
-        RESTREAM_QUEUE,
-        UDP_DEST,
-        SRT_DEST,
-
-        H264_PARSE,
-        H264_DECODE,
-
-        H265_PARSE,
-        H265_DECODE,
-
-        VIDEO_CONVERT,
-
-        WINDOW_TEE,
-        AUTO_VIDEO_SINK,
-        CLOCK_OVERLAY,
-
-        MPEG2_PARSE,
-        MPEG2_DECODE,
-
-        RTP_VIDEO_ENCODE,
-        RTP_VIDEO_PAYLOAD,
-        RTP_VIDEO_PAYLOAD_QUEUE,
-        RTP_VIDEO_FILTER,
-
-        AAC_PARSE,
-        AAC_DECODE,
-
-        PCM_PARSE,
-
-        AUDIO_CONVERT,
-        AUDIO_RESAMPLE,
-
-        RTP_AUDIO_ENCODE,
-        RTP_AUDIO_PAYLOAD,
-        RTP_AUDIO_PAYLOAD_QUEUE,
-        RTP_AUDIO_FILTER,
-
-        WEBRTC_BIN
-    };
-
-    GstBus* pipelineMessageBus_;
-    GstElement* pipeline_;
-    std::map<ElementLabel, GstElement*> elements_;
-
-    http::WhipClient& whipClient_;
-
-    std::string whipResource_;
-    std::string etag_;
-
-    bool showWindow_;
-    bool showTimer_;
-    bool srtTransport_;
-
-    void makeElement(const ElementLabel elementLabel, const char* name, const char* element);
-    void onH264SinkPadAdded(GstPad* newPad);
-    void onH265SinkPadAdded(GstPad* newPad);
-    void onMpeg2SinkPadAdded(GstPad* newPad);
-    void onAacSinkPadAdded(GstPad* newPad);
-    void onPcmSinkPadAdded(GstPad* newPad);
-
-    GstElement* addClockOverlay(GstElement* lastElement);
-    GstElement* addWindowOutput(GstElement* lastElement);
-};
-
-Pipeline::Impl::Impl(http::WhipClient& whipClient,
-    std::string&& mpegTsAddress,
-    const uint32_t mpegTsPort,
-    const std::chrono::milliseconds mpegTsBufferSize,
-    std::string&& restreamAddress,
-    const uint32_t restreamPort,
-    const bool showWindow,
-    const bool showTimer,
-    const bool srtTransport)
-    : pipelineMessageBus_(nullptr),
-      whipClient_(whipClient),
-      showWindow_(showWindow),
-      showTimer_(showTimer),
-      srtTransport_(srtTransport)
+Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipClient_(whipClient), config_(config)
 {
     GstElement* srcElement;
     GstElement* restreamDestElement;
 
     Logger::log("Creating pipeline mpegTsAddress %s, mpegTsPort %u, mpegTsBufferSize %llu ns, srt=%s",
-        mpegTsAddress.c_str(),
-        mpegTsPort,
-        std::chrono::nanoseconds(mpegTsBufferSize).count(),
-        srtTransport_ ? "true" : "false");
+        config.udpSourceAddress_.c_str(),
+        config.udpSourcePort_,
+        std::chrono::nanoseconds(config.udpSourceQueueMinTime_).count(),
+        config.srtTransport_ ? "true" : "false");
 
-    init();
-
-    makeElement(ElementLabel::UDP_QUEUE, "UDP_QUEUE", "queue");
-    makeElement(ElementLabel::TS_DEMUX, "TS_DEMUX", "tsdemux");
-    if (!gst_element_link_many(
-        elements_[ElementLabel::UDP_QUEUE],
-        elements_[ElementLabel::TS_DEMUX],
-        nullptr))
-    {
-        g_printerr("UDP source elements could not be linked.\n");
-        return;
-    }
-
-    if (!srtTransport_)
-    {
-        makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
-        g_object_set(elements_[ElementLabel::UDP_SOURCE],
-            "address",
-            mpegTsAddress.c_str(),
-            "port",
-            mpegTsPort,
-            "auto-multicast",
-            true,
-            "buffer-size",
-            825984,
-            nullptr);        
-        srcElement = elements_[ElementLabel::UDP_SOURCE];
-    }
-    else
-    {
-        makeElement(ElementLabel::SRT_SOURCE, "SRT_SOURCE", "srtsrc");
-        g_object_set(elements_[ElementLabel::SRT_SOURCE],
-            "localaddress",
-            mpegTsAddress.c_str(),
-            "localport",
-            mpegTsPort,
-            "mode",
-            2, // GST_SRT_CONNECTION_MODE_LISTENER,
-            "wait-for-connection",
-            true,
-            "latency",
-            125,
-            nullptr);        
-        srcElement = elements_[ElementLabel::SRT_SOURCE];
-    }
-
-    if (!restreamAddress.empty())
-    {
-        Logger::log("Restreaming (pass-through) to %s:%u srt=%s",
-            restreamAddress.c_str(),
-            restreamPort,
-            srtTransport_ ? "true": "false");
-        makeElement(ElementLabel::TEE, "TEE", "tee");
-        makeElement(ElementLabel::RESTREAM_QUEUE, "RESTREAM_QUEUE", "queue");
-        if (!gst_element_link_many(
-            srcElement,
-            elements_[ElementLabel::TEE],
-            elements_[ElementLabel::RESTREAM_QUEUE],
-            nullptr))
-        {
-            g_printerr("Failed to connect to restream tee to restream queue.\n");
-            return;
-        }
-
-        if (!srtTransport_)
-        {
-            makeElement(ElementLabel::UDP_DEST, "UDP_DEST", "udpsink");
-            g_object_set(elements_[ElementLabel::UDP_DEST],
-                "host",
-                restreamAddress.c_str(),
-                "port",
-                restreamPort,
-                nullptr);
-
-            restreamDestElement = elements_[ElementLabel::UDP_DEST];
-        }
-        else
-        {
-            makeElement(ElementLabel::SRT_DEST, "SRT_DEST", "srtsink");
-            std::string restreamUri = "srt://" + restreamAddress + ":" + std::to_string(restreamPort);
-            Logger::log("SRT restream=%s", restreamUri.c_str());
-
-            g_object_set(elements_[ElementLabel::SRT_DEST],
-                "uri",
-                restreamUri.c_str(),
-                "mode",
-                1, // GST_SRT_CONNECTION_MODE_CALLER
-                "wait-for-connection",
-                false,
-                "latency",
-                125,
-                nullptr);
-
-            restreamDestElement = elements_[ElementLabel::SRT_DEST];
-        }
-
-        if (!gst_element_link(
-            elements_[ElementLabel::RESTREAM_QUEUE],
-            restreamDestElement))
-        {
-            g_printerr("Restream destination elements could not be linked.\n");
-            return;
-        }
-
-        srcElement = elements_[ElementLabel::TEE];
-    }
-
-
-    if (!gst_element_link(
-        srcElement,
-        elements_[ElementLabel::UDP_QUEUE]))
-    {
-        g_printerr("Failed to connect source with queue.\n");
-        return;
-    }
-
-    g_object_set(elements_[ElementLabel::TS_DEMUX], "latency", 0, nullptr);
-    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
-
-    g_object_set(elements_[ElementLabel::UDP_QUEUE],
-        "min-threshold-time",
-        std::chrono::nanoseconds(mpegTsBufferSize).count(),
-        nullptr);
-}
-
-Pipeline::Impl::Impl(http::WhipClient& whipClient,
-    std::string&& fileName,
-    const bool showWindow,
-    const bool showTimer)
-    : pipelineMessageBus_(nullptr),
-      whipClient_(whipClient),
-      showWindow_(showWindow),
-      showTimer_(showTimer)
-{
-    Logger::log("Creating pipeline fileName %s", fileName.c_str());
-    init();
-
-    makeElement(ElementLabel::FILE_SOURCE, "FILE_SOURCE", "filesrc");
-    makeElement(ElementLabel::QT_DEMUX, "QT_DEMUX", "qtdemux");
-
-    if (!gst_element_link_many(elements_[ElementLabel::FILE_SOURCE], elements_[ElementLabel::QT_DEMUX], nullptr))
-    {
-        g_printerr("File source elements could not be linked.\n");
-        return;
-    }
-
-    g_object_set(elements_[ElementLabel::FILE_SOURCE], "location", fileName.c_str(), nullptr);
-
-    g_signal_connect(elements_[ElementLabel::QT_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
-}
-
-Pipeline::Impl::~Impl()
-{
-    gst_element_set_state(pipeline_, GST_STATE_NULL);
-
-    if (pipeline_)
-    {
-        gst_object_unref(pipeline_);
-    }
-    if (pipelineMessageBus_)
-    {
-        gst_object_unref(pipelineMessageBus_);
-    }
-
-    gst_bus_remove_watch(pipelineMessageBus_);
-    gst_deinit();
-}
-
-void Pipeline::Impl::init()
-{
     gst_init(nullptr, nullptr);
 
     pipeline_ = gst_pipeline_new("mpeg-ts-pipeline");
@@ -351,13 +58,7 @@ void Pipeline::Impl::init()
 
     makeElement(ElementLabel::WEBRTC_BIN, "WEBRTC_BIN", "webrtcbin");
 
-    if (showWindow_)
-    {
-        makeElement(ElementLabel::WINDOW_TEE, "WINDOW_TEE", "tee");
-        makeElement(ElementLabel::AUTO_VIDEO_SINK, "AUTO_VIDEO_SINK", "autovideosink");
-    }
-
-    if (showTimer_)
+    if (config.showTimer_)
     {
         makeElement(ElementLabel::CLOCK_OVERLAY, "CLOCK_OVERLAY", "clockoverlay");
     }
@@ -420,7 +121,7 @@ void Pipeline::Impl::init()
         "bundle-policy",
         GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE,
         "latency",
-        100,
+        config.jitterBufferLatency_,
         nullptr);
     gst_element_sync_state_with_parent(elements_[ElementLabel::WEBRTC_BIN]);
 
@@ -429,9 +130,142 @@ void Pipeline::Impl::init()
         G_CALLBACK(onNegotiationNeededCallback),
         this);
     g_signal_connect(elements_[ElementLabel::WEBRTC_BIN], "on-ice-candidate", G_CALLBACK(onIceCandidateCallback), this);
+
+    makeElement(ElementLabel::UDP_QUEUE, "UDP_QUEUE", "queue");
+    makeElement(ElementLabel::TS_DEMUX, "TS_DEMUX", "tsdemux");
+    if (!gst_element_link_many(elements_[ElementLabel::UDP_QUEUE], elements_[ElementLabel::TS_DEMUX], nullptr))
+    {
+        g_printerr("UDP source elements could not be linked.\n");
+        return;
+    }
+
+    if (!config.srtTransport_)
+    {
+        makeElement(ElementLabel::UDP_SOURCE, "UDP_SOURCE", "udpsrc");
+        g_object_set(elements_[ElementLabel::UDP_SOURCE],
+            "address",
+            config.udpSourceAddress_.c_str(),
+            "port",
+            config.udpSourcePort_,
+            "auto-multicast",
+            true,
+            "buffer-size",
+            825984,
+            nullptr);
+        srcElement = elements_[ElementLabel::UDP_SOURCE];
+    }
+    else
+    {
+        makeElement(ElementLabel::SRT_SOURCE, "SRT_SOURCE", "srtsrc");
+        g_object_set(elements_[ElementLabel::SRT_SOURCE],
+            "localaddress",
+            config.udpSourceAddress_.c_str(),
+            "localport",
+            config.udpSourcePort_,
+            "mode",
+            2, // GST_SRT_CONNECTION_MODE_LISTENER,
+            "wait-for-connection",
+            true,
+            "latency",
+            config.srtSourceLatency_,
+            nullptr);
+        srcElement = elements_[ElementLabel::SRT_SOURCE];
+    }
+
+    if (!config.restreamAddress_.empty())
+    {
+        Logger::log("Restreaming (pass-through) to %s:%u srt=%s",
+            config.restreamAddress_.c_str(),
+            config.restreamPort_,
+            config.srtTransport_ ? "true" : "false");
+        makeElement(ElementLabel::TEE, "TEE", "tee");
+        makeElement(ElementLabel::RESTREAM_QUEUE, "RESTREAM_QUEUE", "queue");
+        if (!gst_element_link_many(srcElement,
+                elements_[ElementLabel::TEE],
+                elements_[ElementLabel::RESTREAM_QUEUE],
+                nullptr))
+        {
+            Logger::log("Failed to connect to restream tee to restream queue.");
+            return;
+        }
+
+        if (!config.srtTransport_)
+        {
+            makeElement(ElementLabel::UDP_DEST, "UDP_DEST", "udpsink");
+            g_object_set(elements_[ElementLabel::UDP_DEST],
+                "host",
+                config.restreamAddress_.c_str(),
+                "port",
+                config.restreamPort_,
+                nullptr);
+
+            restreamDestElement = elements_[ElementLabel::UDP_DEST];
+        }
+        else
+        {
+            makeElement(ElementLabel::SRT_DEST, "SRT_DEST", "srtsink");
+            std::string restreamUri = "srt://";
+            restreamUri.append(config.restreamAddress_);
+            restreamUri.append(":");
+            restreamUri.append(std::to_string(config.restreamPort_));
+            Logger::log("SRT restream=%s", restreamUri.c_str());
+
+            g_object_set(elements_[ElementLabel::SRT_DEST],
+                "uri",
+                restreamUri.c_str(),
+                "mode",
+                1, // GST_SRT_CONNECTION_MODE_CALLER
+                "wait-for-connection",
+                false,
+                "latency",
+                config.srtSourceLatency_,
+                nullptr);
+
+            restreamDestElement = elements_[ElementLabel::SRT_DEST];
+        }
+
+        if (!gst_element_link(elements_[ElementLabel::RESTREAM_QUEUE], restreamDestElement))
+        {
+            Logger::log("Restream destination elements could not be linked.");
+            return;
+        }
+
+        srcElement = elements_[ElementLabel::TEE];
+    }
+
+    if (!gst_element_link(srcElement, elements_[ElementLabel::UDP_QUEUE]))
+    {
+        Logger::log("Failed to connect source with queue.");
+        return;
+    }
+
+    g_object_set(elements_[ElementLabel::TS_DEMUX], "latency", config.tsDemuxLatency_, nullptr);
+    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
+
+    g_object_set(elements_[ElementLabel::UDP_QUEUE],
+        "min-threshold-time",
+        std::chrono::nanoseconds(config.udpSourceQueueMinTime_).count(),
+        nullptr);
 }
 
-void Pipeline::Impl::onPipelineMessage(GstMessage* message)
+Pipeline::~Pipeline()
+{
+    gst_element_set_state(pipeline_, GST_STATE_NULL);
+
+    if (pipeline_)
+    {
+        gst_object_unref(pipeline_);
+    }
+    if (pipelineMessageBus_)
+    {
+        gst_object_unref(pipelineMessageBus_);
+    }
+
+    gst_bus_remove_watch(pipelineMessageBus_);
+    gst_deinit();
+}
+
+void Pipeline::onPipelineMessage(GstMessage* message)
 {
     switch (GST_MESSAGE_TYPE(message))
     {
@@ -495,7 +329,7 @@ void Pipeline::Impl::onPipelineMessage(GstMessage* message)
     }
 }
 
-void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
+void Pipeline::onDemuxPadAdded(GstPad* newPad)
 {
     utils::ScopedGstObject newPadCaps(gst_pad_get_current_caps(newPad));
     auto newPadStruct = gst_caps_get_structure(newPadCaps.get(), 0);
@@ -529,9 +363,9 @@ void Pipeline::Impl::onDemuxPadAdded(GstPad* newPad)
     }
 }
 
-GstElement* Pipeline::Impl::addClockOverlay(GstElement* lastElement)
+GstElement* Pipeline::addClockOverlay(GstElement* lastElement)
 {
-    if (showTimer_)
+    if (config_.showTimer_)
     {
         if (!gst_element_link_many(lastElement, elements_[ElementLabel::CLOCK_OVERLAY], nullptr))
         {
@@ -543,24 +377,7 @@ GstElement* Pipeline::Impl::addClockOverlay(GstElement* lastElement)
     return lastElement;
 }
 
-GstElement* Pipeline::Impl::addWindowOutput(GstElement* lastElement)
-{
-    if (showWindow_)
-    {
-        if (!gst_element_link_many(lastElement,
-                elements_[ElementLabel::WINDOW_TEE],
-                elements_[ElementLabel::AUTO_VIDEO_SINK],
-                nullptr))
-        {
-            Logger::log("Video elements could not be linked.");
-            return lastElement;
-        }
-        lastElement = elements_[ElementLabel::WINDOW_TEE];
-    }
-    return lastElement;
-}
-
-void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
+void Pipeline::onH264SinkPadAdded(GstPad* newPad)
 {
     const auto& findResult = elements_.find(ElementLabel::H264_PARSE);
     if (findResult == elements_.cend())
@@ -568,9 +385,7 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
         return;
     }
 
-    if (!gst_element_link_many(elements_[ElementLabel::H264_PARSE],
-            elements_[ElementLabel::H264_DECODE],
-            nullptr))
+    if (!gst_element_link_many(elements_[ElementLabel::H264_PARSE], elements_[ElementLabel::H264_DECODE], nullptr))
     {
         Logger::log("Video elements could not be linked.");
         return;
@@ -578,7 +393,6 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
 
     auto lastElement = elements_[ElementLabel::H264_DECODE];
     lastElement = addClockOverlay(lastElement);
-    lastElement = addWindowOutput(lastElement);
 
     if (!gst_element_link_many(lastElement,
             elements_[ElementLabel::VIDEO_CONVERT],
@@ -600,7 +414,7 @@ void Pipeline::Impl::onH264SinkPadAdded(GstPad* newPad)
     gst_pad_link(newPad, sinkPad.get());
 }
 
-void Pipeline::Impl::onH265SinkPadAdded(GstPad* newPad)
+void Pipeline::onH265SinkPadAdded(GstPad* newPad)
 {
     const auto& findResult = elements_.find(ElementLabel::H265_PARSE);
     if (findResult == elements_.cend())
@@ -608,9 +422,7 @@ void Pipeline::Impl::onH265SinkPadAdded(GstPad* newPad)
         return;
     }
 
-    if (!gst_element_link_many(elements_[ElementLabel::H265_PARSE],
-            elements_[ElementLabel::H265_DECODE],
-            nullptr))
+    if (!gst_element_link_many(elements_[ElementLabel::H265_PARSE], elements_[ElementLabel::H265_DECODE], nullptr))
     {
         Logger::log("Video elements could not be linked.");
         return;
@@ -618,7 +430,6 @@ void Pipeline::Impl::onH265SinkPadAdded(GstPad* newPad)
 
     auto lastElement = elements_[ElementLabel::H265_DECODE];
     lastElement = addClockOverlay(lastElement);
-    lastElement = addWindowOutput(lastElement);
 
     if (!gst_element_link_many(lastElement,
             elements_[ElementLabel::VIDEO_CONVERT],
@@ -640,7 +451,7 @@ void Pipeline::Impl::onH265SinkPadAdded(GstPad* newPad)
     gst_pad_link(newPad, sinkPad.get());
 }
 
-void Pipeline::Impl::onMpeg2SinkPadAdded(GstPad* newPad)
+void Pipeline::onMpeg2SinkPadAdded(GstPad* newPad)
 {
     const auto& findResult = elements_.find(ElementLabel::MPEG2_PARSE);
     if (findResult == elements_.cend())
@@ -669,7 +480,7 @@ void Pipeline::Impl::onMpeg2SinkPadAdded(GstPad* newPad)
     gst_pad_link(newPad, sinkPad.get());
 }
 
-void Pipeline::Impl::onAacSinkPadAdded(GstPad* newPad)
+void Pipeline::onAacSinkPadAdded(GstPad* newPad)
 {
     const auto& findResult = elements_.find(ElementLabel::AAC_PARSE);
     if (findResult == elements_.cend())
@@ -699,7 +510,7 @@ void Pipeline::Impl::onAacSinkPadAdded(GstPad* newPad)
     gst_pad_link(newPad, sinkPad.get());
 }
 
-void Pipeline::Impl::onPcmSinkPadAdded(GstPad* newPad)
+void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
 {
     const auto& findResult = elements_.find(ElementLabel::PCM_PARSE);
     if (findResult == elements_.cend())
@@ -728,7 +539,7 @@ void Pipeline::Impl::onPcmSinkPadAdded(GstPad* newPad)
     gst_pad_link(newPad, sinkPad.get());
 }
 
-void Pipeline::Impl::onNegotiationNeeded()
+void Pipeline::onNegotiationNeeded()
 {
     Logger::log("onNegotiationNeeded");
 
@@ -765,7 +576,7 @@ void Pipeline::Impl::onNegotiationNeeded()
     g_signal_emit_by_name(elements_[ElementLabel::WEBRTC_BIN], "create-offer", nullptr, promise);
 }
 
-void Pipeline::Impl::onOfferCreated(GstPromise* promise)
+void Pipeline::onOfferCreated(GstPromise* promise)
 {
     Logger::log("onOfferCreated");
 
@@ -815,7 +626,7 @@ void Pipeline::Impl::onOfferCreated(GstPromise* promise)
     }
 }
 
-void Pipeline::Impl::onIceCandidate(guint /*mLineIndex*/, gchar* candidate)
+void Pipeline::onIceCandidate(guint /*mLineIndex*/, gchar* candidate)
 {
     if (whipResource_.empty())
     {
@@ -828,7 +639,7 @@ void Pipeline::Impl::onIceCandidate(guint /*mLineIndex*/, gchar* candidate)
     whipClient_.updateIce(whipResource_, etag_, candidateString.data());
 }
 
-void Pipeline::Impl::makeElement(const ElementLabel elementLabel, const char* name, const char* element)
+void Pipeline::makeElement(const ElementLabel elementLabel, const char* name, const char* element)
 {
     const auto& result = elements_.emplace(elementLabel, gst_element_factory_make(element, name));
     if (!result.first->second)
@@ -851,7 +662,7 @@ void Pipeline::Impl::makeElement(const ElementLabel elementLabel, const char* na
     }
 }
 
-void Pipeline::Impl::run()
+void Pipeline::run()
 {
     if (gst_element_set_state(pipeline_, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE)
     {
@@ -860,81 +671,35 @@ void Pipeline::Impl::run()
     }
 }
 
-void Pipeline::Impl::stop() {}
+void Pipeline::stop() {}
 
-Pipeline::Pipeline(http::WhipClient& whipClient,
-    std::string&& mpegTsAddress,
-    const uint32_t mpegTsPort,
-    const std::chrono::milliseconds mpegTsBufferSize,
-    std::string&& restreamAddress,
-    const uint32_t restreamPort,
-    const bool showWindow,
-    const bool showTimer,
-    const bool srtTransport)
-    : impl_(std::make_unique<Pipeline::Impl>(whipClient,
-          std::move(mpegTsAddress),
-          mpegTsPort,
-          mpegTsBufferSize,
-          std::move(restreamAddress),
-          restreamPort,
-          showWindow,
-          showTimer,
-          srtTransport))
+gboolean Pipeline::pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData)
 {
-}
-
-Pipeline::Pipeline(http::WhipClient& whipClient,
-    std::string&& fileName,
-    const bool showWindow,
-    const bool showTimer)
-    : impl_(std::make_unique<Pipeline::Impl>(whipClient, std::move(fileName), showWindow, showTimer))
-{
-}
-
-Pipeline::~Pipeline() // NOLINT(modernize-use-equals-default)
-{
-}
-
-void Pipeline::run()
-{
-    impl_->run();
-}
-
-void Pipeline::stop()
-{
-    impl_->stop();
-}
-
-gboolean Pipeline::Impl::pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData)
-{
-    auto impl = reinterpret_cast<Pipeline::Impl*>(userData);
+    auto impl = reinterpret_cast<Pipeline*>(userData);
     impl->onPipelineMessage(message);
     return TRUE;
 }
 
-void Pipeline::Impl::demuxPadAddedCallback(GstElement* /*src*/, GstPad* newPad, gpointer userData)
+void Pipeline::demuxPadAddedCallback(GstElement* /*src*/, GstPad* newPad, gpointer userData)
 {
-    auto impl = reinterpret_cast<Pipeline::Impl*>(userData);
+    auto impl = reinterpret_cast<Pipeline*>(userData);
     impl->onDemuxPadAdded(newPad);
 }
 
-void Pipeline::Impl::onOfferCreatedCallback(GstPromise* promise, gpointer userData)
+void Pipeline::onOfferCreatedCallback(GstPromise* promise, gpointer userData)
 {
-    auto pipelineImpl = reinterpret_cast<Pipeline::Impl*>(userData);
+    auto pipelineImpl = reinterpret_cast<Pipeline*>(userData);
     pipelineImpl->onOfferCreated(promise);
 }
 
-void Pipeline::Impl::onNegotiationNeededCallback(GstElement* /*webRtcBin*/, gpointer userData)
+void Pipeline::onNegotiationNeededCallback(GstElement* /*webRtcBin*/, gpointer userData)
 {
-    auto pipelineImpl = reinterpret_cast<Pipeline::Impl*>(userData);
+    auto pipelineImpl = reinterpret_cast<Pipeline*>(userData);
     pipelineImpl->onNegotiationNeeded();
 }
 
-void Pipeline::Impl::onIceCandidateCallback(GstElement* /*webrtc*/,
-    guint mLineIndex,
-    gchar* candidate,
-    gpointer userData)
+void Pipeline::onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, gchar* candidate, gpointer userData)
 {
-    auto pipelineImpl = reinterpret_cast<Pipeline::Impl*>(userData);
+    auto pipelineImpl = reinterpret_cast<Pipeline*>(userData);
     pipelineImpl->onIceCandidate(mLineIndex, candidate);
 }

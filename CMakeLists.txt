@@ -36,7 +36,7 @@ set(FILES
         Pipeline.h
         Logger.h
         utils/ScopedGLibMem.h
-        Logger.cpp)
+        Logger.cpp Config.h)
 
 add_executable(whip-mpegts ${FILES})
 
