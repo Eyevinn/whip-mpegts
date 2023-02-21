@@ -24,7 +24,6 @@ public:
     void run();
     void stop();
 
-    void onPipelineMessage(GstMessage* message);
     void onDemuxPadAdded(GstPad* newPad);
     void onOfferCreated(GstPromise* promise);
     void onNegotiationNeeded();

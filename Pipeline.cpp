@@ -265,70 +265,6 @@ Pipeline::~Pipeline()
     gst_deinit();
 }
 
-void Pipeline::onPipelineMessage(GstMessage* message)
-{
-    switch (GST_MESSAGE_TYPE(message))
-    {
-    case GST_MESSAGE_STATE_CHANGED:
-        if (GST_ELEMENT(message->src) == pipeline_)
-        {
-            GstState oldState;
-            GstState newState;
-            GstState pendingState;
-
-            gst_message_parse_state_changed(message, &oldState, &newState, &pendingState);
-
-            {
-                auto dumpName = g_strconcat("state_changed-",
-                    gst_element_state_get_name(oldState),
-                    "_",
-                    gst_element_state_get_name(newState),
-                    nullptr);
-                g_free(dumpName);
-            }
-        }
-        break;
-
-    case GST_MESSAGE_ERROR:
-    {
-        GError* err = nullptr;
-        gchar* dbgInfo = nullptr;
-
-        gst_message_parse_error(message, &err, &dbgInfo);
-        Logger::log("ERROR from element %s: %s", GST_OBJECT_NAME(message->src), err->message);
-        Logger::log("Debugging info: %s", dbgInfo ? dbgInfo : "none");
-        g_error_free(err);
-        g_free(dbgInfo);
-    }
-    break;
-
-    case GST_MESSAGE_EOS:
-    {
-        Logger::log("EOS received");
-    }
-    break;
-
-    case GST_MESSAGE_NEW_CLOCK:
-    {
-        Logger::log("New pipeline clock");
-    }
-    break;
-
-    case GST_MESSAGE_CLOCK_LOST:
-        Logger::log("Clock lost, restarting pipeline");
-        if (gst_element_set_state(pipeline_, GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE ||
-            gst_element_set_state(pipeline_, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE)
-        {
-            Logger::log("Unable to restart the pipeline.");
-            return;
-        }
-        break;
-
-    default:
-        break;
-    }
-}
-
 void Pipeline::onDemuxPadAdded(GstPad* newPad)
 {
     utils::ScopedGstObject newPadCaps(gst_pad_get_current_caps(newPad));
@@ -675,8 +611,68 @@ void Pipeline::stop() {}
 
 gboolean Pipeline::pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData)
 {
-    auto impl = reinterpret_cast<Pipeline*>(userData);
-    impl->onPipelineMessage(message);
+    auto pipeline = reinterpret_cast<GstElement*>(userData);
+
+    switch (GST_MESSAGE_TYPE(message))
+    {
+    case GST_MESSAGE_STATE_CHANGED:
+        if (GST_ELEMENT(message->src) == pipeline)
+        {
+            GstState oldState;
+            GstState newState;
+            GstState pendingState;
+
+            gst_message_parse_state_changed(message, &oldState, &newState, &pendingState);
+
+            {
+                auto dumpName = g_strconcat("state_changed-",
+                    gst_element_state_get_name(oldState),
+                    "_",
+                    gst_element_state_get_name(newState),
+                    nullptr);
+                Logger::log("%s", dumpName);
+                g_free(dumpName);
+            }
+        }
+        break;
+
+    case GST_MESSAGE_ERROR:
+    {
+        GError* err = nullptr;
+        gchar* dbgInfo = nullptr;
+
+        gst_message_parse_error(message, &err, &dbgInfo);
+        Logger::log("ERROR from element %s: %s", GST_OBJECT_NAME(message->src), err->message);
+        Logger::log("Debugging info: %s", dbgInfo ? dbgInfo : "none");
+        g_error_free(err);
+        g_free(dbgInfo);
+    }
+    break;
+
+    case GST_MESSAGE_EOS:
+    {
+        Logger::log("EOS received");
+    }
+    break;
+
+    case GST_MESSAGE_NEW_CLOCK:
+    {
+        Logger::log("New pipeline clock");
+    }
+    break;
+
+    case GST_MESSAGE_CLOCK_LOST:
+        Logger::log("Clock lost, restarting pipeline");
+        if (gst_element_set_state(pipeline, GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE ||
+            gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE)
+        {
+            Logger::log("Unable to restart the pipeline.");
+        }
+        break;
+
+    default:
+        break;
+    }
     return TRUE;
 }
 
