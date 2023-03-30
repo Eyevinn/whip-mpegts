@@ -1,7 +1,5 @@
 #include "http/WhipClient.h"
-#include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <libsoup/soup.h>
 #include <unordered_map>
 
@@ -12,12 +10,9 @@ void iterateResponseHeaders(const char* name, const char* value, gpointer userDa
 {
     auto headers = reinterpret_cast<std::unordered_map<std::string, std::string>*>(userData);
     auto key = std::string(name);
-    std::transform(key.cbegin(),
-        key.cend(),
-        key.begin(), // write to the same location
-        [](unsigned char c) {
-            return std::tolower(c);
-        });
+    std::transform(key.cbegin(), key.cend(), key.begin(), [](unsigned char c) {
+        return std::tolower(c);
+    });
     headers->emplace(key, value);
 }
 
