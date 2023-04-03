@@ -2,6 +2,7 @@
 #include <cassert>
 #include <libsoup/soup.h>
 #include <unordered_map>
+#include <algorithm>
 
 namespace
 {
