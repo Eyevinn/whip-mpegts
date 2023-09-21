@@ -17,3 +17,5 @@ mpeg-ts-client.xcodeproj/
 !.vscode/launch.json
 !.vscode/extensions.json
 ## End Visual Studio Code
+.xmake/
+dot/

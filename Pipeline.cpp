@@ -240,6 +240,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
 
     g_object_set(elements_[ElementLabel::TS_DEMUX], "latency", config.tsDemuxLatency_, nullptr);
     g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
+    g_signal_connect(elements_[ElementLabel::TS_DEMUX], "no-more-pads", G_CALLBACK(demuxNoMorePadsCallback), this);
 
     g_object_set(elements_[ElementLabel::UDP_QUEUE],
         "min-threshold-time",
@@ -296,6 +297,12 @@ void Pipeline::onDemuxPadAdded(GstPad* newPad)
     {
         Logger::log("Unsupported MPEG-TS demux pad type %s", newPadType);
     }
+}
+
+void Pipeline::onDemuxNoMorePads()
+{
+    Logger::log("All pads created");
+    GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline");
 }
 
 GstElement* Pipeline::addClockOverlay(GstElement* lastElement)
@@ -664,6 +671,12 @@ void Pipeline::demuxPadAddedCallback(GstElement* /*src*/, GstPad* newPad, gpoint
 {
     auto impl = reinterpret_cast<Pipeline*>(userData);
     impl->onDemuxPadAdded(newPad);
+}
+
+void Pipeline::demuxNoMorePadsCallback(GstElement* /*src*/, gpointer userData)
+{
+    auto impl = reinterpret_cast<Pipeline*>(userData);
+    impl->onDemuxNoMorePads();
 }
 
 void Pipeline::onOfferCreatedCallback(GstPromise* promise, gpointer userData)
