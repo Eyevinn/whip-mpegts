@@ -50,6 +50,9 @@ struct Config
         result.append("restreamPort: ");
         result.append(std::to_string(restreamPort_));
         result.append("\n");
+        result.append("h264encodeBitrate: ");
+        result.append(std::to_string(h264encodeBitrate));
+        result.append("\n");
         result.append("showTimer: ");
         result.append(showTimer_ ? "true" : "false");
         result.append("\n");
@@ -64,9 +67,6 @@ struct Config
         result.append("\n");
         result.append("srtSourceLatency: ");
         result.append(std::to_string(srtSourceLatency_));
-        result.append("\n");
-        result.append("h264encodeBitrate: ");
-        result.append(std::to_string(h264encodeBitrate));
         result.append("\n");
         result.append("audio: ");
         result.append(audio_ ? "true" : "false");
