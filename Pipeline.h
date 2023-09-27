@@ -25,12 +25,14 @@ public:
     void stop();
 
     void onDemuxPadAdded(GstPad* newPad);
+    void onDemuxNoMorePads();
     void onOfferCreated(GstPromise* promise);
     void onNegotiationNeeded();
     void onIceCandidate(guint mLineIndex, gchar* candidate);
 
     static gboolean pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData);
     static void demuxPadAddedCallback(GstElement* /*src*/, GstPad* newPad, gpointer userData);
+    static void demuxNoMorePadsCallback(GstElement* /*src*/, gpointer userData);
     static void onOfferCreatedCallback(GstPromise* promise, gpointer userData);
     static void onNegotiationNeededCallback(GstElement* /*webRtcBin*/, gpointer userData);
     static void onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, gchar* candidate, gpointer userData);

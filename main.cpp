@@ -23,11 +23,12 @@ namespace
     {"tsDemuxLatency", required_argument, nullptr, 0},
     {"jitterBufferLatency", required_argument, nullptr, 0},
     {"srtSourceLatency", required_argument, nullptr, 0},
+    {"h264EncodeBitrate", required_argument, nullptr, 'b'},
     {"no-audio", no_argument, nullptr, 0},
     {"no-video", no_argument, nullptr, 0},
     {nullptr, no_argument, nullptr, 0}};
 
-const auto shortOptions = "a:p:u:k:d:r:o:ts";
+const auto shortOptions = "a:p:u:k:d:r:o:b:ts";
 
 const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  -a, --udpSourceAddress STRING\n"
@@ -37,6 +38,7 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  -d, --udpSourceQueueMinTime INT ms\n"
                           "  -r, --restreamAddress STRING\n"
                           "  -o, --restreamPort INT\n"
+                          "  -b, --h264EncodeBitrate INT (Kb)\n"
                           "  -t, --showTimer\n"
                           "  -s, --srtTransport\n"
                           "  --tsDemuxLatency INT\n"
@@ -97,6 +99,9 @@ int32_t main(int32_t argc, char** argv)
             break;
         case 'o':
             config.restreamPort_ = std::strtoul(optarg, nullptr, 10);
+            break;
+        case 'b':
+            config.h264encodeBitrate = std::strtoul(optarg, nullptr, 10);
             break;
         case 't':
             config.showTimer_ = true;
