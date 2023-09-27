@@ -23,6 +23,7 @@ namespace
     {"tsDemuxLatency", required_argument, nullptr, 0},
     {"jitterBufferLatency", required_argument, nullptr, 0},
     {"srtSourceLatency", required_argument, nullptr, 0},
+    {"h264EncodeBitrate", required_argument, nullptr, 0},
     {"no-audio", no_argument, nullptr, 0},
     {"no-video", no_argument, nullptr, 0},
     {nullptr, no_argument, nullptr, 0}};
@@ -42,6 +43,7 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  --tsDemuxLatency INT\n"
                           "  --jitterBufferLatency INT\n"
                           "  --srtSourceLatency INT\n"
+                          "  --h264EncodeBitrate INT (Kb)\n"
                           "  --no-audio\n"
                           "  --no-video\n";
 
@@ -122,9 +124,12 @@ int32_t main(int32_t argc, char** argv)
             config.srtSourceLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
         case 12:
-            config.audio_ = false;
+            config.h264encodeBitrate = std::strtoul(optarg, nullptr, 10);
             break;
         case 13:
+            config.audio_ = false;
+            break;
+        case 14:
             config.video_ = false;
             break;
         default:

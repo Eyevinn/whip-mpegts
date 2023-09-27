@@ -30,8 +30,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     makeElement(ElementLabel::MPEG2_PARSE, "mpegvideoparse");
     makeElement(ElementLabel::MPEG2_DECODE, "avdec_mpeg2video");
 
-    makeElement(ElementLabel::RTP_VIDEO_ENCODE, "vp8enc");
-    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD, "rtpvp8pay");
+    makeElement(ElementLabel::RTP_VIDEO_ENCODE, "x264enc");
+    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD, "rtph264pay");
     makeElement(ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE, "queue");
     makeElement(ElementLabel::RTP_VIDEO_FILTER, "capsfilter");
 
@@ -62,14 +62,12 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
         "threads",
         2,
-        "target-bitrate",
-        256000000,
-        "error-resilient",
-        1,
-        "end-usage",
-        0,
-        "deadline",
-        1,
+        "bitrate",
+        config.h264encodeBitrate,
+        "tune",
+        1, // zerolatency
+        "speed-preset",
+        1, // ultrafast
         nullptr);
 
     if (config.audio_)
@@ -102,7 +100,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             96,
             "encoding-name",
             G_TYPE_STRING,
-            "VP8",
+            "H264",
             nullptr));
 
         gst_element_link_filtered(elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],

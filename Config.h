@@ -20,6 +20,7 @@ struct Config
           tsDemuxLatency_(0),
           jitterBufferLatency_(0),
           srtSourceLatency_(125),
+          h264encodeBitrate(200),
           audio_(true),
           video_(true)
     {
@@ -64,6 +65,9 @@ struct Config
         result.append("srtSourceLatency: ");
         result.append(std::to_string(srtSourceLatency_));
         result.append("\n");
+        result.append("h264encodeBitrate: ");
+        result.append(std::to_string(h264encodeBitrate));
+        result.append("\n");
         result.append("audio: ");
         result.append(audio_ ? "true" : "false");
         result.append("\n");
@@ -87,6 +91,7 @@ struct Config
     uint32_t tsDemuxLatency_;
     uint32_t jitterBufferLatency_;
     uint32_t srtSourceLatency_;
+    uint32_t h264encodeBitrate;
 
     bool audio_;
     bool video_;
