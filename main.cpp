@@ -127,9 +127,12 @@ int32_t main(int32_t argc, char** argv)
             config.srtSourceLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
         case 12:
-            config.audio_ = false;
+            config.h264encodeBitrate = std::strtoul(optarg, nullptr, 10);
             break;
         case 13:
+            config.audio_ = false;
+            break;
+        case 14:
             config.video_ = false;
             break;
         default:

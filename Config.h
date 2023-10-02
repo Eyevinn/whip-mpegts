@@ -20,7 +20,7 @@ struct Config
           tsDemuxLatency_(0),
           jitterBufferLatency_(0),
           srtSourceLatency_(125),
-          h264encodeBitrate(200),
+          h264encodeBitrate(2000),
           audio_(true),
           video_(true)
     {
