@@ -1,8 +1,9 @@
 #include "http/WhipClient.h"
+#include "Logger.h"
+#include <algorithm>
 #include <cassert>
 #include <libsoup/soup.h>
 #include <unordered_map>
-#include <algorithm>
 
 namespace
 {
@@ -34,8 +35,13 @@ WhipClient::WhipClient(const std::string& url, const std::string& authKey)
       url_(url),
       authKey_(authKey)
 {
-    data_->soupSession_ =
-        soup_session_new_with_options(SOUP_SESSION_TIMEOUT, 5, SOUP_SESSION_SSL_STRICT, FALSE, nullptr);
+    data_->soupSession_ = soup_session_new_with_options(SOUP_SESSION_TIMEOUT,
+        5,
+        SOUP_SESSION_SSL_STRICT,
+        FALSE,
+        SOUP_SESSION_SSL_USE_SYSTEM_CA_FILE,
+        TRUE,
+        nullptr);
     if (!data_->soupSession_)
     {
         assert(false);
@@ -62,12 +68,15 @@ WhipClient::SendOfferResult WhipClient::sendOffer(const std::string& sdp)
     soup_message_set_request(soupMessage, "application/sdp", SOUP_MEMORY_COPY, sdp.c_str(), sdp.size());
     if (!authKey_.empty())
     {
-        soup_message_headers_append(soupMessage->request_headers, "Authorization", authKey_.c_str());
+        // This is for Broadcast Box compatibility (same as OBS studio)
+        auto bearer_token_header = std::string("Bearer ") + authKey_;
+        soup_message_headers_append(soupMessage->request_headers, "Authorization", bearer_token_header.c_str());
     }
 
     auto statusCode = soup_session_send_message(data_->soupSession_, soupMessage);
     if (statusCode != 201)
     {
+        Logger::log("Failed to send offer, status code: %d", statusCode);
         return {};
     }
 

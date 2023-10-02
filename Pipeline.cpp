@@ -520,8 +520,10 @@ void Pipeline::onOfferCreated(GstPromise* promise)
     auto sendOfferReply = whipClient_.sendOffer(offerString);
     if (sendOfferReply.resource_.empty())
     {
+        Logger::log("Server did not respond with resource");
         return;
     }
+
     whipResource_ = std::move(sendOfferReply.resource_);
     etag_ = std::move((sendOfferReply.etag_));
     Logger::log("Server responded with resource %s, etag %s", whipResource_.c_str(), etag_.c_str());
