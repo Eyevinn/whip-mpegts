@@ -6,6 +6,7 @@ MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an 
 
 Supported platforms are Ubuntu 20.04, 21.10 and OSX.
 
+
 ### Install binary
 
 Homebrew:
@@ -38,6 +39,21 @@ Flags:
 
 - \-t Enable burned in timer
 - \-s Setup SRT socket in listener mode for receiving MPEG-TS and also use SRT when restreaming
+
+### Quick Start
+To play out a testing stream and watch it in browser, we can use [Broadcast Box](https://github.com/Glimesh/broadcast-box).
+
+```
+// Generate a testing stream with GStreamer
+gst-launch-1.0 -v \
+    videotestsrc ! clockoverlay ! video/x-raw, height=360, width=640 ! videoconvert ! x264enc tune=zerolatency ! video/x-h264, profile=constrained-baseline ! mux. \
+    audiotestsrc ! audio/x-raw, format=S16LE, channels=2, rate=44100 ! audioconvert ! voaacenc ! aacparse ! mux. \
+    mpegtsmux name=mux ! queue ! srtsink uri="srt://127.0.0.1:9998?mode=caller" wait-for-connection=false
+
+// Start whip-mpegts with you own Stream Key (e.g., testingstream123) and use Broadcast Box as WHIP endpoint
+./whip-mpegts -a "127.0.0.1" -p 9998 -u "https://b.siobud.com/api/whip" -k "testingstream123"  -s
+```
+Open [Broadcast Box](https://b.siobud.com) in browser and type in the same Stream Key (e.g., testingstream123) and click "Watch Stream".
 
 ### Build Ubuntu 21.10
 
