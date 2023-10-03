@@ -40,6 +40,9 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
 
     makeElement(ElementLabel::PCM_PARSE, "rawaudioparse");
 
+    makeElement(ElementLabel::OPUS_PARSE, "opusparse");
+    makeElement(ElementLabel::OPUS_DECODE, "opusdec");
+
     makeElement(ElementLabel::AUDIO_CONVERT, "audioconvert");
     makeElement(ElementLabel::AUDIO_RESAMPLE, "audioresample");
     makeElement(ElementLabel::RTP_AUDIO_ENCODE, "opusenc");
@@ -287,6 +290,10 @@ void Pipeline::onDemuxPadAdded(GstPad* newPad)
     {
         onAacSinkPadAdded(newPad);
     }
+    else if (g_str_has_prefix(newPadType, "audio/x-opus"))
+    {
+        onOpusSinkPadAdded(newPad);
+    }
     else if (g_str_has_prefix(newPadType, "audio/x-raw"))
     {
         onPcmSinkPadAdded(newPad);
@@ -459,6 +466,36 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
     }
 
     if (!gst_element_link_many(elements_[ElementLabel::PCM_PARSE],
+            elements_[ElementLabel::AUDIO_CONVERT],
+            elements_[ElementLabel::AUDIO_RESAMPLE],
+            elements_[ElementLabel::RTP_AUDIO_ENCODE],
+            elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+            elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+            nullptr))
+    {
+        Logger::log("Audio elements could not be linked.");
+        return;
+    }
+
+    utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+    if (gst_pad_is_linked(sinkPad.get()))
+    {
+        return;
+    }
+
+    gst_pad_link(newPad, sinkPad.get());
+}
+
+void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
+{
+    const auto& findResult = elements_.find(ElementLabel::OPUS_PARSE);
+    if (findResult == elements_.cend())
+    {
+        return;
+    }
+
+    if (!gst_element_link_many(elements_[ElementLabel::OPUS_PARSE],
+            elements_[ElementLabel::OPUS_DECODE],
             elements_[ElementLabel::AUDIO_CONVERT],
             elements_[ElementLabel::AUDIO_RESAMPLE],
             elements_[ElementLabel::RTP_AUDIO_ENCODE],
