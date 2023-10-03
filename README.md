@@ -26,6 +26,7 @@ Usage: whip-mpegts [OPTION]
   -d, --udpSourceQueueMinTime INT ms
   -r, --restreamAddress STRING
   -o, --restreamPort INT
+  -b, --h264EncodeBitrate INT kb
   -t, --showTimer
   -s, --srtTransport
   --tsDemuxLatency INT
@@ -33,12 +34,16 @@ Usage: whip-mpegts [OPTION]
   --srtSourceLatency INT
   --no-audio
   --no-video
+  --bypass-audio
+  --bypass-video
 ```
 
 Flags:
 
 - \-t Enable burned in timer
 - \-s Setup SRT socket in listener mode for receiving MPEG-TS and also use SRT when restreaming
+- \--bypass-video Skip video transcoding. Only works with H264.
+- \--bypass-audio Skip audio transcoding. Only works with OPUS.
 
 ### Quick Start
 To play out a testing stream and watch it in browser, we can use [Broadcast Box](https://github.com/Glimesh/broadcast-box).
