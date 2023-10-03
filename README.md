@@ -94,6 +94,13 @@ cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" .
 make
 ```
 
+Notes:
+For **HTTPS** requests, GLIB (libsoup) requires some environment variables:
+```
+export GLIB_NETWORKING=/opt/homebrew/Cellar/glib-networking/2.78.0
+export GIO_MODULE_DIR=${GLIB_NETWORKING}/lib/gio/modules/
+```
+
 ### Build Docker Container
 
 Build container (uses multi-stage builds):
