@@ -22,7 +22,9 @@ struct Config
           srtSourceLatency_(125),
           h264encodeBitrate(2000),
           audio_(true),
-          video_(true)
+          video_(true),
+          bypass_audio_(false),
+          bypass_video_(false)
     {
     }
 
@@ -74,6 +76,11 @@ struct Config
         result.append("video: ");
         result.append(video_ ? "true" : "false");
         result.append("\n");
+        result.append("bypass audio: ");
+        result.append(bypass_audio_ ? "true" : "false");
+        result.append("\n");
+        result.append("bypass video: ");
+        result.append(bypass_video_ ? "true" : "false");
 
         return result;
     }
@@ -95,4 +102,7 @@ struct Config
 
     bool audio_;
     bool video_;
+
+    bool bypass_audio_;
+    bool bypass_video_;
 };
