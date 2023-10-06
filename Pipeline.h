@@ -75,6 +75,9 @@ private:
 
         PCM_PARSE,
 
+        OPUS_PARSE,
+        OPUS_DECODE,
+
         AUDIO_CONVERT,
         AUDIO_RESAMPLE,
 
@@ -102,6 +105,7 @@ private:
     void onMpeg2SinkPadAdded(GstPad* newPad);
     void onAacSinkPadAdded(GstPad* newPad);
     void onPcmSinkPadAdded(GstPad* newPad);
+    void onOpusSinkPadAdded(GstPad* newPad);
 
     GstElement* addClockOverlay(GstElement* lastElement);
 };

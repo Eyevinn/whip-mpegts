@@ -40,6 +40,9 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
 
     makeElement(ElementLabel::PCM_PARSE, "rawaudioparse");
 
+    makeElement(ElementLabel::OPUS_PARSE, "opusparse");
+    makeElement(ElementLabel::OPUS_DECODE, "opusdec");
+
     makeElement(ElementLabel::AUDIO_CONVERT, "audioconvert");
     makeElement(ElementLabel::AUDIO_RESAMPLE, "audioresample");
     makeElement(ElementLabel::RTP_AUDIO_ENCODE, "opusenc");
@@ -57,7 +60,10 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     pipelineMessageBus_ = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
     gst_bus_add_watch(pipelineMessageBus_, reinterpret_cast<GstBusFunc>(pipelineBusWatch), pipeline_);
 
-    g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
+    if (!config_.bypass_video_)
+    {
+        g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
+    }
 
     g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
         "threads",
@@ -287,6 +293,10 @@ void Pipeline::onDemuxPadAdded(GstPad* newPad)
     {
         onAacSinkPadAdded(newPad);
     }
+    else if (g_str_has_prefix(newPadType, "audio/x-opus"))
+    {
+        onOpusSinkPadAdded(newPad);
+    }
     else if (g_str_has_prefix(newPadType, "audio/x-raw"))
     {
         onPcmSinkPadAdded(newPad);
@@ -305,7 +315,7 @@ void Pipeline::onDemuxNoMorePads()
 
 GstElement* Pipeline::addClockOverlay(GstElement* lastElement)
 {
-    if (config_.showTimer_)
+    if (config_.showTimer_ && !config_.bypass_video_)
     {
         if (!gst_element_link_many(lastElement, elements_[ElementLabel::CLOCK_OVERLAY], nullptr))
         {
@@ -325,24 +335,38 @@ void Pipeline::onH264SinkPadAdded(GstPad* newPad)
         return;
     }
 
-    if (!gst_element_link_many(elements_[ElementLabel::H264_PARSE], elements_[ElementLabel::H264_DECODE], nullptr))
+    if (config_.bypass_video_)
     {
-        Logger::log("Video elements could not be linked.");
-        return;
+        if (!gst_element_link_many(elements_[ElementLabel::H264_PARSE],
+                elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
+                elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Video elements could not be linked.");
+            return;
+        }
     }
-
-    auto lastElement = elements_[ElementLabel::H264_DECODE];
-    lastElement = addClockOverlay(lastElement);
-
-    if (!gst_element_link_many(lastElement,
-            elements_[ElementLabel::VIDEO_CONVERT],
-            elements_[ElementLabel::RTP_VIDEO_ENCODE],
-            elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
-            elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
-            nullptr))
+    else
     {
-        Logger::log("Video elements could not be linked.");
-        return;
+        if (!gst_element_link_many(elements_[ElementLabel::H264_PARSE], elements_[ElementLabel::H264_DECODE], nullptr))
+        {
+            Logger::log("Video elements could not be linked.");
+            return;
+        }
+
+        auto lastElement = elements_[ElementLabel::H264_DECODE];
+        lastElement = addClockOverlay(lastElement);
+
+        if (!gst_element_link_many(lastElement,
+                elements_[ElementLabel::VIDEO_CONVERT],
+                elements_[ElementLabel::RTP_VIDEO_ENCODE],
+                elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
+                elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Video elements could not be linked.");
+            return;
+        }
     }
 
     utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
@@ -468,6 +492,50 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
     {
         Logger::log("Audio elements could not be linked.");
         return;
+    }
+
+    utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+    if (gst_pad_is_linked(sinkPad.get()))
+    {
+        return;
+    }
+
+    gst_pad_link(newPad, sinkPad.get());
+}
+
+void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
+{
+    const auto& findResult = elements_.find(ElementLabel::OPUS_PARSE);
+    if (findResult == elements_.cend())
+    {
+        return;
+    }
+
+    if (config_.bypass_audio_)
+    {
+        if (!gst_element_link_many(elements_[ElementLabel::OPUS_PARSE],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Audio elements could not be linked.");
+            return;
+        }
+    }
+    else
+    {
+        if (!gst_element_link_many(elements_[ElementLabel::OPUS_PARSE],
+                elements_[ElementLabel::OPUS_DECODE],
+                elements_[ElementLabel::AUDIO_CONVERT],
+                elements_[ElementLabel::AUDIO_RESAMPLE],
+                elements_[ElementLabel::RTP_AUDIO_ENCODE],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Audio elements could not be linked.");
+            return;
+        }
     }
 
     utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
