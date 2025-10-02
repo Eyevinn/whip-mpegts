@@ -20,6 +20,7 @@ namespace
     {"restreamPort", required_argument, nullptr, 'o'},
     {"showTimer", no_argument, nullptr, 't'},
     {"srtTransport", no_argument, nullptr, 's'},
+    {"srtMode", required_argument, nullptr, 'm'},
     {"tsDemuxLatency", required_argument, nullptr, 0},
     {"jitterBufferLatency", required_argument, nullptr, 0},
     {"srtSourceLatency", required_argument, nullptr, 0},
@@ -30,7 +31,7 @@ namespace
     {"bypass-video", no_argument, nullptr, 0},
     {nullptr, no_argument, nullptr, 0}};
 
-const auto shortOptions = "a:p:u:k:d:r:o:b:ts";
+const auto shortOptions = "a:p:u:k:d:r:o:b:m:ts";
 
 const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  -a, --udpSourceAddress STRING\n"
@@ -43,6 +44,7 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  -b, --h264EncodeBitrate INT (Kb)\n"
                           "  -t, --showTimer\n"
                           "  -s, --srtTransport\n"
+                          "  -m, --srtMode INT (1=caller, 2=listener, default=2)\n"
                           "  --tsDemuxLatency INT\n"
                           "  --jitterBufferLatency INT\n"
                           "  --srtSourceLatency INT\n"
@@ -112,6 +114,9 @@ int32_t main(int32_t argc, char** argv)
             break;
         case 's':
             config.srtTransport_ = true;
+            break;
+        case 'm':
+            config.srtMode_ = std::strtoul(optarg, nullptr, 10);
             break;
         case 0:
             break;
