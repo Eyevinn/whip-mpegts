@@ -17,6 +17,7 @@ struct Config
           restreamPort_(0),
           showTimer_(false),
           srtTransport_(false),
+          srtMode_(2),
           tsDemuxLatency_(0),
           jitterBufferLatency_(0),
           srtSourceLatency_(125),
@@ -61,6 +62,9 @@ struct Config
         result.append("srtTransport: ");
         result.append(srtTransport_ ? "true" : "false");
         result.append("\n");
+        result.append("srtMode: ");
+        result.append(std::to_string(srtMode_));
+        result.append(" (1=caller, 2=listener)\n");
         result.append("tsDemuxLatency: ");
         result.append(std::to_string(tsDemuxLatency_));
         result.append("\n");
@@ -94,6 +98,7 @@ struct Config
     uint32_t restreamPort_;
     bool showTimer_;
     bool srtTransport_;
+    uint32_t srtMode_;
 
     uint32_t tsDemuxLatency_;
     uint32_t jitterBufferLatency_;

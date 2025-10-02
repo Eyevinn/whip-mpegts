@@ -159,18 +159,41 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     else
     {
         makeElement(ElementLabel::SRT_SOURCE, "srtsrc");
-        g_object_set(elements_[ElementLabel::SRT_SOURCE],
-            "localaddress",
-            config.udpSourceAddress_.c_str(),
-            "localport",
-            config.udpSourcePort_,
-            "mode",
-            2, // GST_SRT_CONNECTION_MODE_LISTENER,
-            "wait-for-connection",
-            true,
-            "latency",
-            config.srtSourceLatency_,
-            nullptr);
+        if (config.srtMode_ == 1)
+        {
+            // GST_SRT_CONNECTION_MODE_CALLER
+            std::string srtUri = "srt://";
+            srtUri.append(config.udpSourceAddress_);
+            srtUri.append(":");
+            srtUri.append(std::to_string(config.udpSourcePort_));
+            Logger::log("SRT caller mode, connecting to %s", srtUri.c_str());
+            g_object_set(elements_[ElementLabel::SRT_SOURCE],
+                "uri",
+                srtUri.c_str(),
+                "mode",
+                1, // GST_SRT_CONNECTION_MODE_CALLER
+                "wait-for-connection",
+                false,
+                "latency",
+                config.srtSourceLatency_,
+                nullptr);
+        }
+        else
+        {
+            // GST_SRT_CONNECTION_MODE_LISTENER (default)
+            g_object_set(elements_[ElementLabel::SRT_SOURCE],
+                "localaddress",
+                config.udpSourceAddress_.c_str(),
+                "localport",
+                config.udpSourcePort_,
+                "mode",
+                2, // GST_SRT_CONNECTION_MODE_LISTENER,
+                "wait-for-connection",
+                true,
+                "latency",
+                config.srtSourceLatency_,
+                nullptr);
+        }
         srcElement = elements_[ElementLabel::SRT_SOURCE];
     }
 
