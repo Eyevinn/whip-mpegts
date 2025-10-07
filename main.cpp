@@ -126,28 +126,28 @@ int32_t main(int32_t argc, char** argv)
 
         switch (optIndex)
         {
-        case 9:
+        case 10:
             config.tsDemuxLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
-        case 10:
+        case 11:
             config.jitterBufferLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
-        case 11:
+        case 12:
             config.srtSourceLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
-        case 12:
+        case 13:
             config.h264encodeBitrate = std::strtoul(optarg, nullptr, 10);
             break;
-        case 13:
+        case 14:
             config.audio_ = false;
             break;
-        case 14:
+        case 15:
             config.video_ = false;
             break;
-        case 15:
+        case 16:
             config.bypass_audio_ = true;
             break;
-        case 16:
+        case 17:
             config.bypass_video_ = true;
             break;
         default:
