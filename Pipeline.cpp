@@ -518,17 +518,16 @@ bool Pipeline::shouldProcessAudioTrack(uint32_t pid)
 
 void Pipeline::onAacSinkPadAdded(GstPad* newPad)
 {
-    // Extract PID from pad
+    // Extract PID from pad name (tsdemux creates pads named like "audio_0101" where 0101 is hex PID)
     uint32_t pid = 0;
-    utils::ScopedGstObject padCaps(gst_pad_get_current_caps(newPad));
-    if (padCaps.get())
+    const gchar* padName = gst_pad_get_name(newPad);
+    if (padName && g_str_has_prefix(padName, "audio_"))
     {
-        auto padStruct = gst_caps_get_structure(padCaps.get(), 0);
-        if (gst_structure_has_field(padStruct, "pid"))
-        {
-            gst_structure_get_uint(padStruct, "pid", &pid);
-        }
+        // Parse hex PID from pad name (e.g., "audio_0101" -> PID 257)
+        const char* pidStr = padName + 6; // Skip "audio_"
+        pid = strtoul(pidStr, nullptr, 16);
     }
+    Logger::log("Processing AAC audio pad: %s (PID: %u)", padName ? padName : "unknown", pid);
 
     if (config_.audioMixer_)
     {
@@ -635,17 +634,16 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
 
 void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
 {
-    // Extract PID from pad
+    // Extract PID from pad name (tsdemux creates pads named like "audio_0101" where 0101 is hex PID)
     uint32_t pid = 0;
-    utils::ScopedGstObject padCaps(gst_pad_get_current_caps(newPad));
-    if (padCaps.get())
+    const gchar* padName = gst_pad_get_name(newPad);
+    if (padName && g_str_has_prefix(padName, "audio_"))
     {
-        auto padStruct = gst_caps_get_structure(padCaps.get(), 0);
-        if (gst_structure_has_field(padStruct, "pid"))
-        {
-            gst_structure_get_uint(padStruct, "pid", &pid);
-        }
+        // Parse hex PID from pad name (e.g., "audio_0101" -> PID 257)
+        const char* pidStr = padName + 6; // Skip "audio_"
+        pid = strtoul(pidStr, nullptr, 16);
     }
+    Logger::log("Processing PCM audio pad: %s (PID: %u)", padName ? padName : "unknown", pid);
 
     if (config_.audioMixer_)
     {
@@ -748,17 +746,16 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
 
 void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
 {
-    // Extract PID from pad
+    // Extract PID from pad name (tsdemux creates pads named like "audio_0101" where 0101 is hex PID)
     uint32_t pid = 0;
-    utils::ScopedGstObject padCaps(gst_pad_get_current_caps(newPad));
-    if (padCaps.get())
+    const gchar* padName = gst_pad_get_name(newPad);
+    if (padName && g_str_has_prefix(padName, "audio_"))
     {
-        auto padStruct = gst_caps_get_structure(padCaps.get(), 0);
-        if (gst_structure_has_field(padStruct, "pid"))
-        {
-            gst_structure_get_uint(padStruct, "pid", &pid);
-        }
+        // Parse hex PID from pad name (e.g., "audio_0101" -> PID 257)
+        const char* pidStr = padName + 6; // Skip "audio_"
+        pid = strtoul(pidStr, nullptr, 16);
     }
+    Logger::log("Processing Opus audio pad: %s (PID: %u)", padName ? padName : "unknown", pid);
 
     if (config_.audioMixer_)
     {
