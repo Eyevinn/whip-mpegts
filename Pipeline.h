@@ -38,7 +38,6 @@ public:
     static void onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, gchar* candidate, gpointer userData);
 
 private:
-private:
     enum class ElementLabel
     {
         UDP_SOURCE,
@@ -81,6 +80,8 @@ private:
         AUDIO_CONVERT,
         AUDIO_RESAMPLE,
 
+        AUDIO_MIXER,
+
         RTP_AUDIO_ENCODE,
         RTP_AUDIO_PAYLOAD,
         RTP_AUDIO_PAYLOAD_QUEUE,
@@ -89,12 +90,23 @@ private:
         WEBRTC_BIN
     };
 
+    struct AudioTrackElements
+    {
+        GstElement* parser;
+        GstElement* decoder;
+        GstElement* convert;
+        GstElement* resample;
+        GstElement* queue;
+        uint32_t pid;
+    };
+
     http::WhipClient& whipClient_;
     const Config& config_;
 
     GstBus* pipelineMessageBus_;
     GstElement* pipeline_;
     std::map<ElementLabel, GstElement*> elements_;
+    std::vector<AudioTrackElements> audioTracks_;
 
     std::string whipResource_;
     std::string etag_;
@@ -106,6 +118,7 @@ private:
     void onAacSinkPadAdded(GstPad* newPad);
     void onPcmSinkPadAdded(GstPad* newPad);
     void onOpusSinkPadAdded(GstPad* newPad);
+    bool shouldProcessAudioTrack(uint32_t pid);
 
     GstElement* addClockOverlay(GstElement* lastElement);
 };

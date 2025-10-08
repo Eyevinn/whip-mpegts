@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 struct Config
 {
@@ -25,7 +26,9 @@ struct Config
           audio_(true),
           video_(true),
           bypass_audio_(false),
-          bypass_video_(false)
+          bypass_video_(false),
+          audioMixer_(false),
+          audioTrackPids_()
     {
     }
 
@@ -85,6 +88,24 @@ struct Config
         result.append("\n");
         result.append("bypass video: ");
         result.append(bypass_video_ ? "true" : "false");
+        result.append("\n");
+        result.append("audio mixer: ");
+        result.append(audioMixer_ ? "true" : "false");
+        result.append("\n");
+        result.append("audio track PIDs: ");
+        if (audioTrackPids_.empty())
+        {
+            result.append("all");
+        }
+        else
+        {
+            for (size_t i = 0; i < audioTrackPids_.size(); ++i)
+            {
+                if (i > 0)
+                    result.append(",");
+                result.append(std::to_string(audioTrackPids_[i]));
+            }
+        }
 
         return result;
     }
@@ -110,4 +131,7 @@ struct Config
 
     bool bypass_audio_;
     bool bypass_video_;
+
+    bool audioMixer_;
+    std::vector<uint32_t> audioTrackPids_;
 };

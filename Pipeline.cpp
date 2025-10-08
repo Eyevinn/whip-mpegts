@@ -43,8 +43,16 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     makeElement(ElementLabel::OPUS_PARSE, "opusparse");
     makeElement(ElementLabel::OPUS_DECODE, "opusdec");
 
-    makeElement(ElementLabel::AUDIO_CONVERT, "audioconvert");
-    makeElement(ElementLabel::AUDIO_RESAMPLE, "audioresample");
+    if (!config.audioMixer_)
+    {
+        makeElement(ElementLabel::AUDIO_CONVERT, "audioconvert");
+        makeElement(ElementLabel::AUDIO_RESAMPLE, "audioresample");
+    }
+    else
+    {
+        makeElement(ElementLabel::AUDIO_MIXER, "audiomixer");
+    }
+
     makeElement(ElementLabel::RTP_AUDIO_ENCODE, "opusenc");
     makeElement(ElementLabel::RTP_AUDIO_PAYLOAD, "rtpopuspay");
     makeElement(ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE, "queue");
@@ -333,6 +341,28 @@ void Pipeline::onDemuxPadAdded(GstPad* newPad)
 void Pipeline::onDemuxNoMorePads()
 {
     Logger::log("All pads created");
+
+    // If using mixer, connect it to the encoder now that all tracks are added
+    if (config_.audioMixer_ && !audioTracks_.empty())
+    {
+        const auto& mixerResult = elements_.find(ElementLabel::AUDIO_MIXER);
+        if (mixerResult != elements_.cend())
+        {
+            if (!gst_element_link_many(mixerResult->second,
+                    elements_[ElementLabel::RTP_AUDIO_ENCODE],
+                    elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                    elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                    nullptr))
+            {
+                Logger::log("Failed to link mixer to encoder");
+            }
+            else
+            {
+                Logger::log("Mixer connected to encoder with %zu audio tracks", audioTracks_.size());
+            }
+        }
+    }
+
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline");
 }
 
@@ -467,88 +497,121 @@ void Pipeline::onMpeg2SinkPadAdded(GstPad* newPad)
     gst_pad_link(newPad, sinkPad.get());
 }
 
+bool Pipeline::shouldProcessAudioTrack(uint32_t pid)
+{
+    // If no specific PIDs configured, process all tracks (when mixer is enabled)
+    if (config_.audioTrackPids_.empty())
+    {
+        return config_.audioMixer_;
+    }
+
+    // Check if this PID is in the list
+    for (auto configPid : config_.audioTrackPids_)
+    {
+        if (configPid == pid)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 void Pipeline::onAacSinkPadAdded(GstPad* newPad)
 {
-    const auto& findResult = elements_.find(ElementLabel::AAC_PARSE);
-    if (findResult == elements_.cend())
+    // Extract PID from pad
+    uint32_t pid = 0;
+    utils::ScopedGstObject padCaps(gst_pad_get_current_caps(newPad));
+    if (padCaps.get())
     {
-        return;
-    }
-
-    if (!gst_element_link_many(elements_[ElementLabel::AAC_PARSE],
-            elements_[ElementLabel::AAC_DECODE],
-            elements_[ElementLabel::AUDIO_CONVERT],
-            elements_[ElementLabel::AUDIO_RESAMPLE],
-            elements_[ElementLabel::RTP_AUDIO_ENCODE],
-            elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
-            elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
-            nullptr))
-    {
-        Logger::log("Audio elements could not be linked.");
-        return;
-    }
-
-    utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
-    if (gst_pad_is_linked(sinkPad.get()))
-    {
-        return;
-    }
-
-    gst_pad_link(newPad, sinkPad.get());
-}
-
-void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
-{
-    const auto& findResult = elements_.find(ElementLabel::PCM_PARSE);
-    if (findResult == elements_.cend())
-    {
-        return;
-    }
-
-    if (!gst_element_link_many(elements_[ElementLabel::PCM_PARSE],
-            elements_[ElementLabel::AUDIO_CONVERT],
-            elements_[ElementLabel::AUDIO_RESAMPLE],
-            elements_[ElementLabel::RTP_AUDIO_ENCODE],
-            elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
-            elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
-            nullptr))
-    {
-        Logger::log("Audio elements could not be linked.");
-        return;
-    }
-
-    utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
-    if (gst_pad_is_linked(sinkPad.get()))
-    {
-        return;
-    }
-
-    gst_pad_link(newPad, sinkPad.get());
-}
-
-void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
-{
-    const auto& findResult = elements_.find(ElementLabel::OPUS_PARSE);
-    if (findResult == elements_.cend())
-    {
-        return;
-    }
-
-    if (config_.bypass_audio_)
-    {
-        if (!gst_element_link_many(elements_[ElementLabel::OPUS_PARSE],
-                elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
-                elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
-                nullptr))
+        auto padStruct = gst_caps_get_structure(padCaps.get(), 0);
+        if (gst_structure_has_field(padStruct, "pid"))
         {
-            Logger::log("Audio elements could not be linked.");
+            gst_structure_get_uint(padStruct, "pid", &pid);
+        }
+    }
+
+    if (config_.audioMixer_)
+    {
+        if (!shouldProcessAudioTrack(pid))
+        {
+            Logger::log("Skipping audio track with PID %u", pid);
             return;
         }
+
+        // Create dedicated elements for this audio track
+        AudioTrackElements track;
+        track.pid = pid;
+
+        auto trackName = std::string("aacparse_") + std::to_string(audioTracks_.size());
+        track.parser = gst_element_factory_make("aacparse", trackName.c_str());
+
+        trackName = std::string("avdec_aac_") + std::to_string(audioTracks_.size());
+        track.decoder = gst_element_factory_make("avdec_aac", trackName.c_str());
+
+        trackName = std::string("audioconvert_") + std::to_string(audioTracks_.size());
+        track.convert = gst_element_factory_make("audioconvert", trackName.c_str());
+
+        trackName = std::string("audioresample_") + std::to_string(audioTracks_.size());
+        track.resample = gst_element_factory_make("audioresample", trackName.c_str());
+
+        trackName = std::string("queue_") + std::to_string(audioTracks_.size());
+        track.queue = gst_element_factory_make("queue", trackName.c_str());
+
+        if (!track.parser || !track.decoder || !track.convert || !track.resample || !track.queue)
+        {
+            Logger::log("Failed to create audio track elements");
+            return;
+        }
+
+        // Add elements to pipeline
+        gst_bin_add_many(GST_BIN(pipeline_), track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr);
+
+        // Link the chain
+        if (!gst_element_link_many(track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr))
+        {
+            Logger::log("Failed to link audio track elements");
+            return;
+        }
+
+        // Connect queue to mixer
+        const auto& mixerResult = elements_.find(ElementLabel::AUDIO_MIXER);
+        if (mixerResult != elements_.cend())
+        {
+            utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+
+            if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
+            {
+                Logger::log("Failed to link audio track queue to mixer");
+                return;
+            }
+        }
+
+        // Sync state with pipeline
+        gst_element_sync_state_with_parent(track.parser);
+        gst_element_sync_state_with_parent(track.decoder);
+        gst_element_sync_state_with_parent(track.convert);
+        gst_element_sync_state_with_parent(track.resample);
+        gst_element_sync_state_with_parent(track.queue);
+
+        // Link demux pad to parser
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(track.parser, "sink"));
+        gst_pad_link(newPad, sinkPad.get());
+
+        audioTracks_.push_back(track);
+        Logger::log("Added AAC audio track %zu (PID: %u) to mixer", audioTracks_.size(), pid);
     }
     else
     {
-        if (!gst_element_link_many(elements_[ElementLabel::OPUS_PARSE],
-                elements_[ElementLabel::OPUS_DECODE],
+        // Original single-track behavior
+        const auto& findResult = elements_.find(ElementLabel::AAC_PARSE);
+        if (findResult == elements_.cend())
+        {
+            return;
+        }
+
+        if (!gst_element_link_many(elements_[ElementLabel::AAC_PARSE],
+                elements_[ElementLabel::AAC_DECODE],
                 elements_[ElementLabel::AUDIO_CONVERT],
                 elements_[ElementLabel::AUDIO_RESAMPLE],
                 elements_[ElementLabel::RTP_AUDIO_ENCODE],
@@ -559,15 +622,259 @@ void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
             Logger::log("Audio elements could not be linked.");
             return;
         }
-    }
 
-    utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
-    if (gst_pad_is_linked(sinkPad.get()))
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+        if (gst_pad_is_linked(sinkPad.get()))
+        {
+            return;
+        }
+
+        gst_pad_link(newPad, sinkPad.get());
+    }
+}
+
+void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
+{
+    // Extract PID from pad
+    uint32_t pid = 0;
+    utils::ScopedGstObject padCaps(gst_pad_get_current_caps(newPad));
+    if (padCaps.get())
     {
-        return;
+        auto padStruct = gst_caps_get_structure(padCaps.get(), 0);
+        if (gst_structure_has_field(padStruct, "pid"))
+        {
+            gst_structure_get_uint(padStruct, "pid", &pid);
+        }
     }
 
-    gst_pad_link(newPad, sinkPad.get());
+    if (config_.audioMixer_)
+    {
+        if (!shouldProcessAudioTrack(pid))
+        {
+            Logger::log("Skipping PCM audio track with PID %u", pid);
+            return;
+        }
+
+        // Create dedicated elements for this audio track
+        AudioTrackElements track;
+        track.pid = pid;
+        track.decoder = nullptr; // PCM doesn't need decoding
+
+        auto trackName = std::string("rawaudioparse_") + std::to_string(audioTracks_.size());
+        track.parser = gst_element_factory_make("rawaudioparse", trackName.c_str());
+
+        trackName = std::string("audioconvert_") + std::to_string(audioTracks_.size());
+        track.convert = gst_element_factory_make("audioconvert", trackName.c_str());
+
+        trackName = std::string("audioresample_") + std::to_string(audioTracks_.size());
+        track.resample = gst_element_factory_make("audioresample", trackName.c_str());
+
+        trackName = std::string("queue_") + std::to_string(audioTracks_.size());
+        track.queue = gst_element_factory_make("queue", trackName.c_str());
+
+        if (!track.parser || !track.convert || !track.resample || !track.queue)
+        {
+            Logger::log("Failed to create PCM audio track elements");
+            return;
+        }
+
+        // Add elements to pipeline
+        gst_bin_add_many(GST_BIN(pipeline_), track.parser, track.convert, track.resample, track.queue, nullptr);
+
+        // Link the chain (no decoder for PCM)
+        if (!gst_element_link_many(track.parser, track.convert, track.resample, track.queue, nullptr))
+        {
+            Logger::log("Failed to link PCM audio track elements");
+            return;
+        }
+
+        // Connect queue to mixer
+        const auto& mixerResult = elements_.find(ElementLabel::AUDIO_MIXER);
+        if (mixerResult != elements_.cend())
+        {
+            utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+
+            if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
+            {
+                Logger::log("Failed to link PCM audio track queue to mixer");
+                return;
+            }
+        }
+
+        // Sync state with pipeline
+        gst_element_sync_state_with_parent(track.parser);
+        gst_element_sync_state_with_parent(track.convert);
+        gst_element_sync_state_with_parent(track.resample);
+        gst_element_sync_state_with_parent(track.queue);
+
+        // Link demux pad to parser
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(track.parser, "sink"));
+        gst_pad_link(newPad, sinkPad.get());
+
+        audioTracks_.push_back(track);
+        Logger::log("Added PCM audio track %zu (PID: %u) to mixer", audioTracks_.size(), pid);
+    }
+    else
+    {
+        // Original single-track behavior
+        const auto& findResult = elements_.find(ElementLabel::PCM_PARSE);
+        if (findResult == elements_.cend())
+        {
+            return;
+        }
+
+        if (!gst_element_link_many(elements_[ElementLabel::PCM_PARSE],
+                elements_[ElementLabel::AUDIO_CONVERT],
+                elements_[ElementLabel::AUDIO_RESAMPLE],
+                elements_[ElementLabel::RTP_AUDIO_ENCODE],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Audio elements could not be linked.");
+            return;
+        }
+
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+        if (gst_pad_is_linked(sinkPad.get()))
+        {
+            return;
+        }
+
+        gst_pad_link(newPad, sinkPad.get());
+    }
+}
+
+void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
+{
+    // Extract PID from pad
+    uint32_t pid = 0;
+    utils::ScopedGstObject padCaps(gst_pad_get_current_caps(newPad));
+    if (padCaps.get())
+    {
+        auto padStruct = gst_caps_get_structure(padCaps.get(), 0);
+        if (gst_structure_has_field(padStruct, "pid"))
+        {
+            gst_structure_get_uint(padStruct, "pid", &pid);
+        }
+    }
+
+    if (config_.audioMixer_)
+    {
+        if (!shouldProcessAudioTrack(pid))
+        {
+            Logger::log("Skipping Opus audio track with PID %u", pid);
+            return;
+        }
+
+        // Create dedicated elements for this audio track
+        AudioTrackElements track;
+        track.pid = pid;
+
+        auto trackName = std::string("opusparse_") + std::to_string(audioTracks_.size());
+        track.parser = gst_element_factory_make("opusparse", trackName.c_str());
+
+        trackName = std::string("opusdec_") + std::to_string(audioTracks_.size());
+        track.decoder = gst_element_factory_make("opusdec", trackName.c_str());
+
+        trackName = std::string("audioconvert_") + std::to_string(audioTracks_.size());
+        track.convert = gst_element_factory_make("audioconvert", trackName.c_str());
+
+        trackName = std::string("audioresample_") + std::to_string(audioTracks_.size());
+        track.resample = gst_element_factory_make("audioresample", trackName.c_str());
+
+        trackName = std::string("queue_") + std::to_string(audioTracks_.size());
+        track.queue = gst_element_factory_make("queue", trackName.c_str());
+
+        if (!track.parser || !track.decoder || !track.convert || !track.resample || !track.queue)
+        {
+            Logger::log("Failed to create Opus audio track elements");
+            return;
+        }
+
+        // Add elements to pipeline
+        gst_bin_add_many(GST_BIN(pipeline_), track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr);
+
+        // Link the chain
+        if (!gst_element_link_many(track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr))
+        {
+            Logger::log("Failed to link Opus audio track elements");
+            return;
+        }
+
+        // Connect queue to mixer
+        const auto& mixerResult = elements_.find(ElementLabel::AUDIO_MIXER);
+        if (mixerResult != elements_.cend())
+        {
+            utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+
+            if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
+            {
+                Logger::log("Failed to link Opus audio track queue to mixer");
+                return;
+            }
+        }
+
+        // Sync state with pipeline
+        gst_element_sync_state_with_parent(track.parser);
+        gst_element_sync_state_with_parent(track.decoder);
+        gst_element_sync_state_with_parent(track.convert);
+        gst_element_sync_state_with_parent(track.resample);
+        gst_element_sync_state_with_parent(track.queue);
+
+        // Link demux pad to parser
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(track.parser, "sink"));
+        gst_pad_link(newPad, sinkPad.get());
+
+        audioTracks_.push_back(track);
+        Logger::log("Added Opus audio track %zu (PID: %u) to mixer", audioTracks_.size(), pid);
+    }
+    else
+    {
+        // Original single-track behavior
+        const auto& findResult = elements_.find(ElementLabel::OPUS_PARSE);
+        if (findResult == elements_.cend())
+        {
+            return;
+        }
+
+        if (config_.bypass_audio_)
+        {
+            if (!gst_element_link_many(elements_[ElementLabel::OPUS_PARSE],
+                    elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                    elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                    nullptr))
+            {
+                Logger::log("Audio elements could not be linked.");
+                return;
+            }
+        }
+        else
+        {
+            if (!gst_element_link_many(elements_[ElementLabel::OPUS_PARSE],
+                    elements_[ElementLabel::OPUS_DECODE],
+                    elements_[ElementLabel::AUDIO_CONVERT],
+                    elements_[ElementLabel::AUDIO_RESAMPLE],
+                    elements_[ElementLabel::RTP_AUDIO_ENCODE],
+                    elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                    elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                    nullptr))
+            {
+                Logger::log("Audio elements could not be linked.");
+                return;
+            }
+        }
+
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+        if (gst_pad_is_linked(sinkPad.get()))
+        {
+            return;
+        }
+
+        gst_pad_link(newPad, sinkPad.get());
+    }
 }
 
 void Pipeline::onNegotiationNeeded()

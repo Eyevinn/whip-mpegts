@@ -29,6 +29,8 @@ namespace
     {"no-video", no_argument, nullptr, 0},
     {"bypass-audio", no_argument, nullptr, 0},
     {"bypass-video", no_argument, nullptr, 0},
+    {"audio-mixer", no_argument, nullptr, 0},
+    {"audio-pids", required_argument, nullptr, 0},
     {nullptr, no_argument, nullptr, 0}};
 
 const auto shortOptions = "a:p:u:k:d:r:o:b:m:ts";
@@ -51,7 +53,9 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  --no-audio\n"
                           "  --no-video\n"
                           "  --bypass-audio\n"
-                          "  --bypass-video\n";
+                          "  --bypass-video\n"
+                          "  --audio-mixer (mix multiple audio tracks)\n"
+                          "  --audio-pids STRING (comma-separated PIDs, e.g., 256,257)\n";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -150,6 +154,31 @@ int32_t main(int32_t argc, char** argv)
         case 17:
             config.bypass_video_ = true;
             break;
+        case 18:
+            config.audioMixer_ = true;
+            break;
+        case 19:
+        {
+            // Parse comma-separated PIDs
+            std::string pidsStr(optarg);
+            size_t pos = 0;
+            while (pos < pidsStr.length())
+            {
+                size_t nextComma = pidsStr.find(',', pos);
+                if (nextComma == std::string::npos)
+                {
+                    nextComma = pidsStr.length();
+                }
+                std::string pidStr = pidsStr.substr(pos, nextComma - pos);
+                uint32_t pid = std::strtoul(pidStr.c_str(), nullptr, 10);
+                if (pid > 0)
+                {
+                    config.audioTrackPids_.push_back(pid);
+                }
+                pos = nextComma + 1;
+            }
+            break;
+        }
         default:
             break;
         }
