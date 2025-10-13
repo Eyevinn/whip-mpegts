@@ -38,6 +38,9 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     makeElement(ElementLabel::AAC_PARSE, "aacparse");
     makeElement(ElementLabel::AAC_DECODE, "avdec_aac");
 
+    makeElement(ElementLabel::MP2_PARSE, "mpegaudioparse");
+    makeElement(ElementLabel::MP2_DECODE, "avdec_mp3");
+
     makeElement(ElementLabel::PCM_PARSE, "rawaudioparse");
 
     makeElement(ElementLabel::OPUS_PARSE, "opusparse");
@@ -84,24 +87,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         1, // ultrafast
         nullptr);
 
-    if (config.audio_)
-    {
-        utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
-            "media",
-            G_TYPE_STRING,
-            "audio",
-            "payload",
-            G_TYPE_INT,
-            111,
-            "encoding-name",
-            G_TYPE_STRING,
-            "OPUS",
-            nullptr));
-
-        gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
-            elements_[ElementLabel::WEBRTC_BIN],
-            rtpAudioFilterCaps.get());
-    }
+    // Audio will be linked to webrtcbin later, after the full audio path is connected
+    // This is done in onDemuxNoMorePads() for mixer mode, or in the audio pad handlers for single-track mode
 
     if (config.video_)
     {
@@ -322,7 +309,27 @@ void Pipeline::onDemuxPadAdded(GstPad* newPad)
     }
     else if (g_str_has_prefix(newPadType, "audio/mpeg"))
     {
-        onAacSinkPadAdded(newPad);
+        // Check mpegversion to distinguish between AAC (version=4) and MP2 (version=1)
+        int mpegversion = 0;
+        if (gst_structure_get_int(newPadStruct, "mpegversion", &mpegversion))
+        {
+            if (mpegversion == 1)
+            {
+                onMp2SinkPadAdded(newPad);
+            }
+            else if (mpegversion == 4)
+            {
+                onAacSinkPadAdded(newPad);
+            }
+            else
+            {
+                Logger::log("Unsupported MPEG audio version %d", mpegversion);
+            }
+        }
+        else
+        {
+            Logger::log("Could not determine MPEG audio version, skipping");
+        }
     }
     else if (g_str_has_prefix(newPadType, "audio/x-opus"))
     {
@@ -358,6 +365,31 @@ void Pipeline::onDemuxNoMorePads()
             }
             else
             {
+                // Now link audio payload queue to webrtcbin
+                utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
+                    "media",
+                    G_TYPE_STRING,
+                    "audio",
+                    "payload",
+                    G_TYPE_INT,
+                    111,
+                    "encoding-name",
+                    G_TYPE_STRING,
+                    "OPUS",
+                    nullptr));
+
+                if (!gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                        elements_[ElementLabel::WEBRTC_BIN],
+                        rtpAudioFilterCaps.get()))
+                {
+                    Logger::log("Failed to link audio to webrtcbin");
+                }
+
+                // Sync the downstream audio elements to pipeline state
+                gst_element_sync_state_with_parent(mixerResult->second);
+                gst_element_sync_state_with_parent(elements_[ElementLabel::RTP_AUDIO_ENCODE]);
+                gst_element_sync_state_with_parent(elements_[ElementLabel::RTP_AUDIO_PAYLOAD]);
+                gst_element_sync_state_with_parent(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE]);
                 Logger::log("Mixer connected to encoder with %zu audio tracks", audioTracks_.size());
             }
         }
@@ -637,6 +669,26 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
             return;
         }
 
+        // Link audio payload queue to webrtcbin
+        utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
+            "media",
+            G_TYPE_STRING,
+            "audio",
+            "payload",
+            G_TYPE_INT,
+            111,
+            "encoding-name",
+            G_TYPE_STRING,
+            "OPUS",
+            nullptr));
+
+        if (!gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                elements_[ElementLabel::WEBRTC_BIN],
+                rtpAudioFilterCaps.get()))
+        {
+            Logger::log("Failed to link audio to webrtcbin");
+        }
+
         utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
         if (gst_pad_is_linked(sinkPad.get()))
         {
@@ -646,6 +698,159 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
         gst_pad_link(newPad, sinkPad.get());
         singleAudioTrackProcessed_ = true;
         Logger::log("Processing first AAC audio track (PID: %u) in single-track mode", pid);
+    }
+}
+
+void Pipeline::onMp2SinkPadAdded(GstPad* newPad)
+{
+    // Extract PID from pad name (tsdemux creates pads named like "audio_0_0101" where 0101 is hex PID)
+    uint32_t pid = 0;
+    const gchar* padName = gst_pad_get_name(newPad);
+    if (padName && g_str_has_prefix(padName, "audio_"))
+    {
+        // Find the last underscore to get the PID (e.g., "audio_0_0101" -> "0101" -> PID 257)
+        const char* lastUnderscore = strrchr(padName, '_');
+        if (lastUnderscore)
+        {
+            pid = strtoul(lastUnderscore + 1, nullptr, 16);
+        }
+    }
+    Logger::log("Processing MP2 audio pad: %s (PID: %u)", padName ? padName : "unknown", pid);
+
+    if (config_.audioMixer_)
+    {
+        if (!shouldProcessAudioTrack(pid))
+        {
+            Logger::log("Skipping MP2 audio track with PID %u", pid);
+            return;
+        }
+
+        // Create dedicated elements for this audio track
+        AudioTrackElements track;
+        track.pid = pid;
+
+        auto trackName = std::string("mpegaudioparse_") + std::to_string(audioTracks_.size());
+        track.parser = gst_element_factory_make("mpegaudioparse", trackName.c_str());
+
+        trackName = std::string("avdec_mp3_") + std::to_string(audioTracks_.size());
+        track.decoder = gst_element_factory_make("avdec_mp3", trackName.c_str());
+
+        trackName = std::string("audioconvert_") + std::to_string(audioTracks_.size());
+        track.convert = gst_element_factory_make("audioconvert", trackName.c_str());
+
+        trackName = std::string("audioresample_") + std::to_string(audioTracks_.size());
+        track.resample = gst_element_factory_make("audioresample", trackName.c_str());
+
+        trackName = std::string("queue_") + std::to_string(audioTracks_.size());
+        track.queue = gst_element_factory_make("queue", trackName.c_str());
+
+        if (!track.parser || !track.decoder || !track.convert || !track.resample || !track.queue)
+        {
+            Logger::log("Failed to create MP2 audio track elements");
+            return;
+        }
+
+        // Add elements to pipeline
+        gst_bin_add_many(GST_BIN(pipeline_),
+            track.parser,
+            track.decoder,
+            track.convert,
+            track.resample,
+            track.queue,
+            nullptr);
+
+        // Link the chain
+        if (!gst_element_link_many(track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr))
+        {
+            Logger::log("Failed to link MP2 audio track elements");
+            return;
+        }
+
+        // Connect queue to mixer
+        const auto& mixerResult = elements_.find(ElementLabel::AUDIO_MIXER);
+        if (mixerResult != elements_.cend())
+        {
+            utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+
+            if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
+            {
+                Logger::log("Failed to link MP2 audio track queue to mixer");
+                return;
+            }
+        }
+
+        // Sync state with pipeline
+        gst_element_sync_state_with_parent(track.parser);
+        gst_element_sync_state_with_parent(track.decoder);
+        gst_element_sync_state_with_parent(track.convert);
+        gst_element_sync_state_with_parent(track.resample);
+        gst_element_sync_state_with_parent(track.queue);
+
+        // Link demux pad to parser
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(track.parser, "sink"));
+        gst_pad_link(newPad, sinkPad.get());
+
+        audioTracks_.push_back(track);
+        Logger::log("Added MP2 audio track %zu (PID: %u) to mixer", audioTracks_.size(), pid);
+    }
+    else
+    {
+        // Original single-track behavior - only process the first audio track
+        if (singleAudioTrackProcessed_)
+        {
+            Logger::log("Skipping MP2 audio track with PID %u (single-track mode, already processing first track)", pid);
+            return;
+        }
+
+        const auto& findResult = elements_.find(ElementLabel::MP2_PARSE);
+        if (findResult == elements_.cend())
+        {
+            return;
+        }
+
+        if (!gst_element_link_many(elements_[ElementLabel::MP2_PARSE],
+                elements_[ElementLabel::MP2_DECODE],
+                elements_[ElementLabel::AUDIO_CONVERT],
+                elements_[ElementLabel::AUDIO_RESAMPLE],
+                elements_[ElementLabel::RTP_AUDIO_ENCODE],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD],
+                elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                nullptr))
+        {
+            Logger::log("Audio elements could not be linked.");
+            return;
+        }
+
+        // Link audio payload queue to webrtcbin
+        utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
+            "media",
+            G_TYPE_STRING,
+            "audio",
+            "payload",
+            G_TYPE_INT,
+            111,
+            "encoding-name",
+            G_TYPE_STRING,
+            "OPUS",
+            nullptr));
+
+        if (!gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                elements_[ElementLabel::WEBRTC_BIN],
+                rtpAudioFilterCaps.get()))
+        {
+            Logger::log("Failed to link audio to webrtcbin");
+        }
+
+        utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
+        if (gst_pad_is_linked(sinkPad.get()))
+        {
+            return;
+        }
+
+        gst_pad_link(newPad, sinkPad.get());
+        singleAudioTrackProcessed_ = true;
+        Logger::log("Processing first MP2 audio track (PID: %u) in single-track mode", pid);
     }
 }
 
@@ -758,6 +963,26 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
         {
             Logger::log("Audio elements could not be linked.");
             return;
+        }
+
+        // Link audio payload queue to webrtcbin
+        utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
+            "media",
+            G_TYPE_STRING,
+            "audio",
+            "payload",
+            G_TYPE_INT,
+            111,
+            "encoding-name",
+            G_TYPE_STRING,
+            "OPUS",
+            nullptr));
+
+        if (!gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                elements_[ElementLabel::WEBRTC_BIN],
+                rtpAudioFilterCaps.get()))
+        {
+            Logger::log("Failed to link audio to webrtcbin");
         }
 
         utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));
@@ -905,6 +1130,26 @@ void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
                 Logger::log("Audio elements could not be linked.");
                 return;
             }
+        }
+
+        // Link audio payload queue to webrtcbin
+        utils::ScopedGstObject rtpAudioFilterCaps(gst_caps_new_simple("application/x-rtp",
+            "media",
+            G_TYPE_STRING,
+            "audio",
+            "payload",
+            G_TYPE_INT,
+            111,
+            "encoding-name",
+            G_TYPE_STRING,
+            "OPUS",
+            nullptr));
+
+        if (!gst_element_link_filtered(elements_[ElementLabel::RTP_AUDIO_PAYLOAD_QUEUE],
+                elements_[ElementLabel::WEBRTC_BIN],
+                rtpAudioFilterCaps.get()))
+        {
+            Logger::log("Failed to link audio to webrtcbin");
         }
 
         utils::ScopedGLibObject sinkPad(gst_element_get_static_pad(findResult->second, "sink"));

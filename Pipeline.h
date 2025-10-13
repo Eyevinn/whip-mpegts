@@ -72,6 +72,9 @@ private:
         AAC_PARSE,
         AAC_DECODE,
 
+        MP2_PARSE,
+        MP2_DECODE,
+
         PCM_PARSE,
 
         OPUS_PARSE,
@@ -117,6 +120,7 @@ private:
     void onH265SinkPadAdded(GstPad* newPad);
     void onMpeg2SinkPadAdded(GstPad* newPad);
     void onAacSinkPadAdded(GstPad* newPad);
+    void onMp2SinkPadAdded(GstPad* newPad);
     void onPcmSinkPadAdded(GstPad* newPad);
     void onOpusSinkPadAdded(GstPad* newPad);
     bool shouldProcessAudioTrack(uint32_t pid);
