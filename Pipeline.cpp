@@ -611,7 +611,13 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
     }
     else
     {
-        // Original single-track behavior
+        // Original single-track behavior - only process the first audio track
+        if (singleAudioTrackProcessed_)
+        {
+            Logger::log("Skipping AAC audio track with PID %u (single-track mode, already processing first track)", pid);
+            return;
+        }
+
         const auto& findResult = elements_.find(ElementLabel::AAC_PARSE);
         if (findResult == elements_.cend())
         {
@@ -638,6 +644,8 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
         }
 
         gst_pad_link(newPad, sinkPad.get());
+        singleAudioTrackProcessed_ = true;
+        Logger::log("Processing first AAC audio track (PID: %u) in single-track mode", pid);
     }
 }
 
@@ -727,7 +735,13 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
     }
     else
     {
-        // Original single-track behavior
+        // Original single-track behavior - only process the first audio track
+        if (singleAudioTrackProcessed_)
+        {
+            Logger::log("Skipping PCM audio track with PID %u (single-track mode, already processing first track)", pid);
+            return;
+        }
+
         const auto& findResult = elements_.find(ElementLabel::PCM_PARSE);
         if (findResult == elements_.cend())
         {
@@ -753,6 +767,8 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
         }
 
         gst_pad_link(newPad, sinkPad.get());
+        singleAudioTrackProcessed_ = true;
+        Logger::log("Processing first PCM audio track (PID: %u) in single-track mode", pid);
     }
 }
 
@@ -851,7 +867,13 @@ void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
     }
     else
     {
-        // Original single-track behavior
+        // Original single-track behavior - only process the first audio track
+        if (singleAudioTrackProcessed_)
+        {
+            Logger::log("Skipping Opus audio track with PID %u (single-track mode, already processing first track)", pid);
+            return;
+        }
+
         const auto& findResult = elements_.find(ElementLabel::OPUS_PARSE);
         if (findResult == elements_.cend())
         {
@@ -892,6 +914,8 @@ void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
         }
 
         gst_pad_link(newPad, sinkPad.get());
+        singleAudioTrackProcessed_ = true;
+        Logger::log("Processing first Opus audio track (PID: %u) in single-track mode", pid);
     }
 }
 

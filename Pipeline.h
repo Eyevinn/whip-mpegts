@@ -107,6 +107,7 @@ private:
     GstElement* pipeline_;
     std::map<ElementLabel, GstElement*> elements_;
     std::vector<AudioTrackElements> audioTracks_;
+    bool singleAudioTrackProcessed_ = false;
 
     std::string whipResource_;
     std::string etag_;
