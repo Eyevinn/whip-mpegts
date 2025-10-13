@@ -518,14 +518,17 @@ bool Pipeline::shouldProcessAudioTrack(uint32_t pid)
 
 void Pipeline::onAacSinkPadAdded(GstPad* newPad)
 {
-    // Extract PID from pad name (tsdemux creates pads named like "audio_0101" where 0101 is hex PID)
+    // Extract PID from pad name (tsdemux creates pads named like "audio_0_0101" where 0101 is hex PID)
     uint32_t pid = 0;
     const gchar* padName = gst_pad_get_name(newPad);
     if (padName && g_str_has_prefix(padName, "audio_"))
     {
-        // Parse hex PID from pad name (e.g., "audio_0101" -> PID 257)
-        const char* pidStr = padName + 6; // Skip "audio_"
-        pid = strtoul(pidStr, nullptr, 16);
+        // Find the last underscore to get the PID (e.g., "audio_0_0101" -> "0101" -> PID 257)
+        const char* lastUnderscore = strrchr(padName, '_');
+        if (lastUnderscore)
+        {
+            pid = strtoul(lastUnderscore + 1, nullptr, 16);
+        }
     }
     Logger::log("Processing AAC audio pad: %s (PID: %u)", padName ? padName : "unknown", pid);
 
@@ -563,7 +566,13 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
         }
 
         // Add elements to pipeline
-        gst_bin_add_many(GST_BIN(pipeline_), track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr);
+        gst_bin_add_many(GST_BIN(pipeline_),
+            track.parser,
+            track.decoder,
+            track.convert,
+            track.resample,
+            track.queue,
+            nullptr);
 
         // Link the chain
         if (!gst_element_link_many(track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr))
@@ -634,14 +643,17 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
 
 void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
 {
-    // Extract PID from pad name (tsdemux creates pads named like "audio_0101" where 0101 is hex PID)
+    // Extract PID from pad name (tsdemux creates pads named like "audio_0_0101" where 0101 is hex PID)
     uint32_t pid = 0;
     const gchar* padName = gst_pad_get_name(newPad);
     if (padName && g_str_has_prefix(padName, "audio_"))
     {
-        // Parse hex PID from pad name (e.g., "audio_0101" -> PID 257)
-        const char* pidStr = padName + 6; // Skip "audio_"
-        pid = strtoul(pidStr, nullptr, 16);
+        // Find the last underscore to get the PID (e.g., "audio_0_0101" -> "0101" -> PID 257)
+        const char* lastUnderscore = strrchr(padName, '_');
+        if (lastUnderscore)
+        {
+            pid = strtoul(lastUnderscore + 1, nullptr, 16);
+        }
     }
     Logger::log("Processing PCM audio pad: %s (PID: %u)", padName ? padName : "unknown", pid);
 
@@ -746,14 +758,17 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
 
 void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
 {
-    // Extract PID from pad name (tsdemux creates pads named like "audio_0101" where 0101 is hex PID)
+    // Extract PID from pad name (tsdemux creates pads named like "audio_0_0101" where 0101 is hex PID)
     uint32_t pid = 0;
     const gchar* padName = gst_pad_get_name(newPad);
     if (padName && g_str_has_prefix(padName, "audio_"))
     {
-        // Parse hex PID from pad name (e.g., "audio_0101" -> PID 257)
-        const char* pidStr = padName + 6; // Skip "audio_"
-        pid = strtoul(pidStr, nullptr, 16);
+        // Find the last underscore to get the PID (e.g., "audio_0_0101" -> "0101" -> PID 257)
+        const char* lastUnderscore = strrchr(padName, '_');
+        if (lastUnderscore)
+        {
+            pid = strtoul(lastUnderscore + 1, nullptr, 16);
+        }
     }
     Logger::log("Processing Opus audio pad: %s (PID: %u)", padName ? padName : "unknown", pid);
 
@@ -791,7 +806,13 @@ void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
         }
 
         // Add elements to pipeline
-        gst_bin_add_many(GST_BIN(pipeline_), track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr);
+        gst_bin_add_many(GST_BIN(pipeline_),
+            track.parser,
+            track.decoder,
+            track.convert,
+            track.resample,
+            track.queue,
+            nullptr);
 
         // Link the chain
         if (!gst_element_link_many(track.parser, track.decoder, track.convert, track.resample, track.queue, nullptr))
