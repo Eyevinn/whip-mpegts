@@ -618,7 +618,8 @@ void Pipeline::onAacSinkPadAdded(GstPad* newPad)
         if (mixerResult != elements_.cend())
         {
             utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
-            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+            GstPadTemplate* mixerSinkPadTemplate = gst_element_get_pad_template(mixerResult->second, "sink_%u");
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad(mixerResult->second, mixerSinkPadTemplate, nullptr, nullptr));
 
             if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
             {
@@ -771,7 +772,8 @@ void Pipeline::onMp2SinkPadAdded(GstPad* newPad)
         if (mixerResult != elements_.cend())
         {
             utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
-            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+            GstPadTemplate* mixerSinkPadTemplate = gst_element_get_pad_template(mixerResult->second, "sink_%u");
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad(mixerResult->second, mixerSinkPadTemplate, nullptr, nullptr));
 
             if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
             {
@@ -916,7 +918,8 @@ void Pipeline::onPcmSinkPadAdded(GstPad* newPad)
         if (mixerResult != elements_.cend())
         {
             utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
-            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+            GstPadTemplate* mixerSinkPadTemplate = gst_element_get_pad_template(mixerResult->second, "sink_%u");
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad(mixerResult->second, mixerSinkPadTemplate, nullptr, nullptr));
 
             if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
             {
@@ -1067,7 +1070,8 @@ void Pipeline::onOpusSinkPadAdded(GstPad* newPad)
         if (mixerResult != elements_.cend())
         {
             utils::ScopedGLibObject queueSrcPad(gst_element_get_static_pad(track.queue, "src"));
-            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad_simple(mixerResult->second, "sink_%u"));
+            GstPadTemplate* mixerSinkPadTemplate = gst_element_get_pad_template(mixerResult->second, "sink_%u");
+            utils::ScopedGLibObject mixerSinkPad(gst_element_request_pad(mixerResult->second, mixerSinkPadTemplate, nullptr, nullptr));
 
             if (gst_pad_link(queueSrcPad.get(), mixerSinkPad.get()) != GST_PAD_LINK_OK)
             {
