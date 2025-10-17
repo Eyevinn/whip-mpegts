@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 struct Config;
 
@@ -37,7 +38,6 @@ public:
     static void onNegotiationNeededCallback(GstElement* /*webRtcBin*/, gpointer userData);
     static void onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, gchar* candidate, gpointer userData);
 
-private:
 private:
     enum class ElementLabel
     {
@@ -73,6 +73,9 @@ private:
         AAC_PARSE,
         AAC_DECODE,
 
+        MP2_PARSE,
+        MP2_DECODE,
+
         PCM_PARSE,
 
         OPUS_PARSE,
@@ -80,6 +83,8 @@ private:
 
         AUDIO_CONVERT,
         AUDIO_RESAMPLE,
+
+        AUDIO_MIXER,
 
         RTP_AUDIO_ENCODE,
         RTP_AUDIO_PAYLOAD,
@@ -89,12 +94,24 @@ private:
         WEBRTC_BIN
     };
 
+    struct AudioTrackElements
+    {
+        GstElement* parser;
+        GstElement* decoder;
+        GstElement* convert;
+        GstElement* resample;
+        GstElement* queue;
+        uint32_t pid;
+    };
+
     http::WhipClient& whipClient_;
     const Config& config_;
 
     GstBus* pipelineMessageBus_;
     GstElement* pipeline_;
     std::map<ElementLabel, GstElement*> elements_;
+    std::vector<AudioTrackElements> audioTracks_;
+    bool singleAudioTrackProcessed_ = false;
 
     std::string whipResource_;
     std::string etag_;
@@ -104,8 +121,10 @@ private:
     void onH265SinkPadAdded(GstPad* newPad);
     void onMpeg2SinkPadAdded(GstPad* newPad);
     void onAacSinkPadAdded(GstPad* newPad);
+    void onMp2SinkPadAdded(GstPad* newPad);
     void onPcmSinkPadAdded(GstPad* newPad);
     void onOpusSinkPadAdded(GstPad* newPad);
+    bool shouldProcessAudioTrack(uint32_t pid);
 
     GstElement* addClockOverlay(GstElement* lastElement);
 };

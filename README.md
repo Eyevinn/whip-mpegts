@@ -37,6 +37,8 @@ Usage: whip-mpegts [OPTION]
   --no-video
   --bypass-audio
   --bypass-video
+  --audio-mixer (mix multiple audio tracks)
+  --audio-pids STRING (comma-separated PIDs, e.g., 256,257)
 ```
 
 Flags:
@@ -46,6 +48,8 @@ Flags:
 - \-m Set SRT mode: 1 for caller (connect to remote), 2 for listener (wait for connection, default)
 - \--bypass-video Skip video transcoding. Only works with H264.
 - \--bypass-audio Skip audio transcoding. Only works with OPUS.
+- \--audio-mixer Enable mixing of multiple audio tracks into a single output stream.
+- \--audio-pids Specify which audio track PIDs to include in the mix (comma-separated). If omitted with --audio-mixer, all audio tracks are mixed.
 
 ### Quick Start
 To play out a testing stream and watch it in browser, we can use [Broadcast Box](https://github.com/Glimesh/broadcast-box).
@@ -74,6 +78,16 @@ ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -f lavfi -i sine=frequency=
 ```
 
 Open [Broadcast Box](https://b.siobud.com) in browser and type in the same Stream Key (e.g., testingstream123) and click "Watch Stream".
+
+#### Example 3: Multiple Audio Tracks with Mixing
+```bash
+# Start whip-mpegts with audio mixer enabled to handle streams with multiple audio tracks
+# Mix all audio tracks:
+./whip-mpegts -a "127.0.0.1" -p 9998 -u "https://b.siobud.com/api/whip" -k "testingstream123" -s --audio-mixer
+
+# Mix only specific audio tracks by PID (e.g., PIDs 256 and 257):
+./whip-mpegts -a "127.0.0.1" -p 9998 -u "https://b.siobud.com/api/whip" -k "testingstream123" -s --audio-mixer --audio-pids 256,257
+```
 
 ### Build Ubuntu 21.10
 
