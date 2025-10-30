@@ -35,18 +35,15 @@ WhipClient::WhipClient(const std::string& url, const std::string& authKey)
       url_(url),
       authKey_(authKey)
 {
-    data_->soupSession_ = soup_session_new_with_options(SOUP_SESSION_TIMEOUT,
-        5,
-        SOUP_SESSION_SSL_STRICT,
-        FALSE,
-        SOUP_SESSION_SSL_USE_SYSTEM_CA_FILE,
-        TRUE,
-        nullptr);
+    data_->soupSession_ = soup_session_new();
     if (!data_->soupSession_)
     {
         assert(false);
         return;
     }
+
+    // Set timeout (5 seconds)
+    g_object_set(data_->soupSession_, "timeout", 5, nullptr);
 }
 
 WhipClient::~WhipClient()
@@ -65,38 +62,71 @@ WhipClient::SendOfferResult WhipClient::sendOffer(const std::string& sdp)
         return {};
     }
 
-    soup_message_set_request(soupMessage, "application/sdp", SOUP_MEMORY_COPY, sdp.c_str(), sdp.size());
+    // Set request body
+    GBytes* bytes = g_bytes_new(sdp.c_str(), sdp.size());
+    soup_message_set_request_body_from_bytes(soupMessage, "application/sdp", bytes);
+    g_bytes_unref(bytes);
+
+    // Set authorization header if provided
     if (!authKey_.empty())
     {
         // This is for Broadcast Box compatibility (same as OBS studio)
         auto bearer_token_header = std::string("Bearer ") + authKey_;
-        soup_message_headers_append(soupMessage->request_headers, "Authorization", bearer_token_header.c_str());
+        SoupMessageHeaders* requestHeaders = soup_message_get_request_headers(soupMessage);
+        soup_message_headers_append(requestHeaders, "Authorization", bearer_token_header.c_str());
     }
 
-    auto statusCode = soup_session_send_message(data_->soupSession_, soupMessage);
-    if (statusCode != 201)
+    // Send the message synchronously
+    GError* error = nullptr;
+    GBytes* responseBytes = soup_session_send_and_read(data_->soupSession_, soupMessage, nullptr, &error);
+
+    auto statusCode = soup_message_get_status(soupMessage);
+
+    if (error || statusCode != 201)
     {
         Logger::log("Failed to send offer, status code: %d", statusCode);
+        if (error)
+        {
+            Logger::log("Error: %s", error->message);
+            g_error_free(error);
+        }
+        if (responseBytes)
+        {
+            g_bytes_unref(responseBytes);
+        }
+        g_object_unref(soupMessage);
         return {};
     }
 
+    // Get response headers
     std::unordered_map<std::string, std::string> headers;
-    soup_message_headers_foreach(soupMessage->response_headers, iterateResponseHeaders, &headers);
+    SoupMessageHeaders* responseHeaders = soup_message_get_response_headers(soupMessage);
+    soup_message_headers_foreach(responseHeaders, iterateResponseHeaders, &headers);
+
     const auto locationItr = headers.find("location");
     if (locationItr == headers.cend())
     {
+        g_bytes_unref(responseBytes);
+        g_object_unref(soupMessage);
         return {};
     }
 
     SendOfferResult result;
     result.resource_ = locationItr->second;
-    result.sdpAnswer_ = soupMessage->response_body->data;
+
+    // Get response body
+    gsize dataSize;
+    const char* data = static_cast<const char*>(g_bytes_get_data(responseBytes, &dataSize));
+    result.sdpAnswer_ = std::string(data, dataSize);
 
     const auto etagItr = headers.find("etag");
     if (etagItr != headers.cend())
     {
         result.etag_ = etagItr->second;
     }
+
+    g_bytes_unref(responseBytes);
+    g_object_unref(soupMessage);
 
     return result;
 }
@@ -109,17 +139,40 @@ bool WhipClient::updateIce(const std::string& resourceUrl, const std::string& et
         return false;
     }
 
-    soup_message_set_request(soupMessage, "application/trickle-ice-sdpfrag", SOUP_MEMORY_COPY, sdp.c_str(), sdp.size());
+    // Set request body
+    GBytes* bytes = g_bytes_new(sdp.c_str(), sdp.size());
+    soup_message_set_request_body_from_bytes(soupMessage, "application/trickle-ice-sdpfrag", bytes);
+    g_bytes_unref(bytes);
+
+    // Set headers
+    SoupMessageHeaders* requestHeaders = soup_message_get_request_headers(soupMessage);
     if (!authKey_.empty())
     {
-        soup_message_headers_append(soupMessage->request_headers, "Authorization", authKey_.c_str());
+        soup_message_headers_append(requestHeaders, "Authorization", authKey_.c_str());
     }
     if (!etag.empty())
     {
-        soup_message_headers_append(soupMessage->request_headers, "ETag", etag.c_str());
+        soup_message_headers_append(requestHeaders, "ETag", etag.c_str());
     }
 
-    auto statusCode = soup_session_send_message(data_->soupSession_, soupMessage);
+    // Send the message synchronously
+    GError* error = nullptr;
+    GBytes* responseBytes = soup_session_send_and_read(data_->soupSession_, soupMessage, nullptr, &error);
+
+    auto statusCode = soup_message_get_status(soupMessage);
+
+    if (responseBytes)
+    {
+        g_bytes_unref(responseBytes);
+    }
+
+    if (error)
+    {
+        g_error_free(error);
+    }
+
+    g_object_unref(soupMessage);
+
     if (statusCode != 204)
     {
         return false;

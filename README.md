@@ -4,7 +4,7 @@ MPEG-TS ingestion client for WHIP (https://github.com/Eyevinn/whip). Ingests an 
 
 ## Getting started
 
-Supported platforms are Ubuntu 20.04, 21.10 and OSX.
+Supported platforms are Ubuntu 22.04+ and OSX.
 
 
 ### Install binary
@@ -75,12 +75,12 @@ ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -f lavfi -i sine=frequency=
 
 Open [Broadcast Box](https://b.siobud.com) in browser and type in the same Stream Key (e.g., testingstream123) and click "Watch Stream".
 
-### Build Ubuntu 21.10
+### Build Ubuntu/Debian
 
 Install dependencies:
 
 ```
-apt-get install libgstreamer1.0-0 gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-libav gstreamer1.0-plugins-rtp gstreamer1.0-nice libsoup2.4-1 cmake gcc g++ make gdb libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libsoup2.4-dev
+apt-get install libgstreamer1.0-0 gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-libav gstreamer1.0-plugins-rtp gstreamer1.0-plugins-ugly gstreamer1.0-nice libsoup-3.0-0 cmake gcc g++ make gdb libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libsoup-3.0-dev pkg-config
 ```
 
 Build:
@@ -98,7 +98,7 @@ XCode command line tools installed.
 
 Install additional dependencies using homebrew:
 ```
-brew install gstreamer gst-plugins-good gst-plugins-bad libsoup@2 cmake gst-libav
+brew install gstreamer gst-plugins-good gst-plugins-bad libsoup cmake gst-libav
 ```
 
 On Apple M1 you might need to build the gst-plugins-bad from source as the SRT plugins are not available in the binary bottle.
