@@ -176,6 +176,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
                 false,
                 "latency",
                 config.srtSourceLatency_,
+                "keep-listening",
+                true,
                 nullptr);
         }
         else
@@ -192,6 +194,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
                 true,
                 "latency",
                 config.srtSourceLatency_,
+                "keep-listening",
+                true,
                 nullptr);
         }
         srcElement = elements_[ElementLabel::SRT_SOURCE];
