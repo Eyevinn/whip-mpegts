@@ -23,6 +23,7 @@ public:
 
     void run();
     void stop();
+    const std::string& getWhipResource() const { return whipResource_; }
 
     void onDemuxPadAdded(GstPad* newPad);
     void onDemuxNoMorePads();
