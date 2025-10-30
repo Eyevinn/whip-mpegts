@@ -283,16 +283,17 @@ Pipeline::~Pipeline()
 {
     gst_element_set_state(pipeline_, GST_STATE_NULL);
 
+    if (pipelineMessageBus_)
+    {
+        gst_bus_remove_watch(pipelineMessageBus_);
+        gst_object_unref(pipelineMessageBus_);
+    }
+
     if (pipeline_)
     {
         gst_object_unref(pipeline_);
     }
-    if (pipelineMessageBus_)
-    {
-        gst_object_unref(pipelineMessageBus_);
-    }
 
-    gst_bus_remove_watch(pipelineMessageBus_);
     gst_deinit();
 }
 
@@ -700,7 +701,11 @@ void Pipeline::stop()
     if (pipeline_)
     {
         // Send EOS to pipeline for graceful shutdown
-        gst_element_send_event(pipeline_, gst_event_new_eos());
+        gboolean eosResult = gst_element_send_event(pipeline_, gst_event_new_eos());
+        if (!eosResult)
+        {
+            Logger::log("Failed to send EOS event to pipeline");
+        }
 
         // Set pipeline to NULL state
         GstStateChangeReturn ret = gst_element_set_state(pipeline_, GST_STATE_NULL);

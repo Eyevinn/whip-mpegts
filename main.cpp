@@ -55,7 +55,7 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
-http::WhipClient* whipClient = nullptr;
+std::unique_ptr<http::WhipClient> whipClient;
 
 void intSignalHandler(int32_t)
 {
@@ -179,16 +179,15 @@ int32_t main(int32_t argc, char** argv)
 
     mainLoop = g_main_loop_new(nullptr, FALSE);
 
-    http::WhipClient whipClientInstance(config.whipEndpointUrl_, config.whipEndpointAuthKey_);
-    whipClient = &whipClientInstance;
-    pipeline = std::make_unique<Pipeline>(whipClientInstance, config);
+    whipClient = std::make_unique<http::WhipClient>(config.whipEndpointUrl_, config.whipEndpointAuthKey_);
+    pipeline = std::make_unique<Pipeline>(*whipClient, config);
     pipeline->run();
 
     g_main_loop_run(mainLoop);
 
     // Clean up
     pipeline.reset();
-    whipClient = nullptr;
+    whipClient.reset();
 
     return 0;
 }
