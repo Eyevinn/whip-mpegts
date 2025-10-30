@@ -21,6 +21,7 @@ public:
     ~WhipClient();
     SendOfferResult sendOffer(const std::string& sdp);
     bool updateIce(const std::string& resourceUrl, const std::string& etag, std::string&& sdp);
+    bool deleteSession(const std::string& resourceUrl);
 
 private:
     struct OpaqueSoupData;

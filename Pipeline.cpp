@@ -693,7 +693,27 @@ void Pipeline::run()
     }
 }
 
-void Pipeline::stop() {}
+void Pipeline::stop()
+{
+    Logger::log("Stopping pipeline...");
+
+    if (pipeline_)
+    {
+        // Send EOS to pipeline for graceful shutdown
+        gst_element_send_event(pipeline_, gst_event_new_eos());
+
+        // Set pipeline to NULL state
+        GstStateChangeReturn ret = gst_element_set_state(pipeline_, GST_STATE_NULL);
+        if (ret == GST_STATE_CHANGE_FAILURE)
+        {
+            Logger::log("Failed to stop pipeline");
+        }
+        else
+        {
+            Logger::log("Pipeline stopped successfully");
+        }
+    }
+}
 
 gboolean Pipeline::pipelineBusWatch(GstBus* /*bus*/, GstMessage* message, gpointer userData)
 {
