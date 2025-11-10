@@ -37,6 +37,7 @@ public:
     static void onOfferCreatedCallback(GstPromise* promise, gpointer userData);
     static void onNegotiationNeededCallback(GstElement* /*webRtcBin*/, gpointer userData);
     static void onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, gchar* candidate, gpointer userData);
+    static gboolean signalHandlerCallback(gpointer userData);
 
 private:
 private:

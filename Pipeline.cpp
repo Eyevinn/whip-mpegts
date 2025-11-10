@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <glib-unix.h>
 #include <gst/sdp/sdp.h>
 #include <gst/webrtc/webrtc.h>
 
@@ -59,6 +60,14 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
 
     pipelineMessageBus_ = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
     gst_bus_add_watch(pipelineMessageBus_, reinterpret_cast<GstBusFunc>(pipelineBusWatch), pipeline_);
+
+    // Set up SIGHUP handler for pipeline debugging if GST_DEBUG_DUMP_DOT_DIR is set
+    const char* dotDir = g_getenv("GST_DEBUG_DUMP_DOT_DIR");
+    if (dotDir != nullptr && dotDir[0] != '\0')
+    {
+        g_unix_signal_add(SIGHUP, signalHandlerCallback, pipeline_);
+        Logger::log("SIGHUP signal handler installed - send SIGHUP to dump pipeline state (GST_DEBUG_DUMP_DOT_DIR=%s)", dotDir);
+    }
 
     if (!config_.bypass_video_)
     {
@@ -816,4 +825,13 @@ void Pipeline::onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, 
 {
     auto pipelineImpl = reinterpret_cast<Pipeline*>(userData);
     pipelineImpl->onIceCandidate(mLineIndex, candidate);
+}
+
+gboolean Pipeline::signalHandlerCallback(gpointer userData)
+{
+    auto pipeline = reinterpret_cast<GstElement*>(userData);
+    Logger::log("SIGHUP received - dumping pipeline state to .dot file");
+    GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-sighup");
+    Logger::log("Pipeline .dot file dumped: pipeline-sighup.dot");
+    return G_SOURCE_CONTINUE; // Keep the signal handler active
 }

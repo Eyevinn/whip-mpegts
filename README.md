@@ -75,6 +75,49 @@ ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -f lavfi -i sine=frequency=
 
 Open [Broadcast Box](https://b.siobud.com) in browser and type in the same Stream Key (e.g., testingstream123) and click "Watch Stream".
 
+## Debugging
+
+### Pipeline State Debugging
+
+You can generate GStreamer pipeline dot files for debugging by setting the `GST_DEBUG_DUMP_DOT_DIR` environment variable. When this variable is set, the application will install a SIGHUP signal handler that allows you to dump the current pipeline state on demand.
+
+**Setup:**
+
+```bash
+# Create a directory for dot files
+mkdir -p /tmp/gst-dots
+
+# Set the environment variable
+export GST_DEBUG_DUMP_DOT_DIR=/tmp/gst-dots
+
+# Run whip-mpegts
+./whip-mpegts -a "127.0.0.1" -p 9998 -u "https://b.siobud.com/api/whip" -k "testingstream123"
+```
+
+**Trigger pipeline state dump:**
+
+While the application is running, send a SIGHUP signal to dump the current pipeline state:
+
+```bash
+# Find the process ID
+ps aux | grep whip-mpegts
+
+# Send SIGHUP signal
+kill -SIGHUP <pid>
+```
+
+This will create a `pipeline-sighup.dot` file in the directory specified by `GST_DEBUG_DUMP_DOT_DIR`. You can convert the dot file to an image:
+
+```bash
+# Convert to PNG
+dot -Tpng /tmp/gst-dots/pipeline-sighup.dot -o pipeline.png
+
+# Convert to SVG
+dot -Tsvg /tmp/gst-dots/pipeline-sighup.dot -o pipeline.svg
+```
+
+**Note:** If `GST_DEBUG_DUMP_DOT_DIR` is not set, the SIGHUP handler will not be installed.
+
 ### Build Ubuntu/Debian
 
 Install dependencies:
