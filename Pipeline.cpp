@@ -270,6 +270,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     }
 
     g_object_set(elements_[ElementLabel::TS_DEMUX], "latency", config.tsDemuxLatency_, nullptr);
+    g_object_set(elements_[ElementLabel::TS_DEMUX], "ignore-pcr", config_.ignorePcr_, nullptr);
     g_signal_connect(elements_[ElementLabel::TS_DEMUX], "pad-added", G_CALLBACK(demuxPadAddedCallback), this);
     g_signal_connect(elements_[ElementLabel::TS_DEMUX], "no-more-pads", G_CALLBACK(demuxNoMorePadsCallback), this);
 

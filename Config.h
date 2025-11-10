@@ -25,8 +25,15 @@ struct Config
           audio_(true),
           video_(true),
           bypass_audio_(false),
-          bypass_video_(false)
+          bypass_video_(false),
+          ignorePcr_(false)
     {
+        // Load ignorePcr from environment variable if set
+        const char* ignorePcrEnv = std::getenv("IGNORE_PCR");
+        if (ignorePcrEnv != nullptr)
+        {
+            ignorePcr_ = (std::string(ignorePcrEnv) == "true" || std::string(ignorePcrEnv) == "1");
+        }
     }
 
     std::string toString()
@@ -85,6 +92,9 @@ struct Config
         result.append("\n");
         result.append("bypass video: ");
         result.append(bypass_video_ ? "true" : "false");
+        result.append("\n");
+        result.append("ignore PCR: ");
+        result.append(ignorePcr_ ? "true" : "false");
 
         return result;
     }
@@ -110,4 +120,5 @@ struct Config
 
     bool bypass_audio_;
     bool bypass_video_;
+    bool ignorePcr_;
 };
