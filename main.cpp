@@ -30,6 +30,7 @@ namespace
     {"bypass-audio", no_argument, nullptr, 0},
     {"bypass-video", no_argument, nullptr, 0},
     {"ignore-pcr", no_argument, nullptr, 0},
+    {"vp8", no_argument, nullptr, 0},
     {nullptr, no_argument, nullptr, 0}};
 
 const auto shortOptions = "a:p:u:k:d:r:o:b:m:ts";
@@ -53,7 +54,8 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  --no-video\n"
                           "  --bypass-audio\n"
                           "  --bypass-video\n"
-                          "  --ignore-pcr (can also use IGNORE_PCR env var)\n";
+                          "  --ignore-pcr (can also use IGNORE_PCR env var)\n"
+                          "  --vp8 (encode video as VP8 instead of H264)\n";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -168,6 +170,9 @@ int32_t main(int32_t argc, char** argv)
             break;
         case 18:
             config.ignorePcr_ = true;
+            break;
+        case 19:
+            config.vp8_ = true;
             break;
         default:
             break;

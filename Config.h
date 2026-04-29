@@ -26,7 +26,8 @@ struct Config
           video_(true),
           bypass_audio_(false),
           bypass_video_(false),
-          ignorePcr_(false)
+          ignorePcr_(false),
+          vp8_(false)
     {
         // Load ignorePcr from environment variable if set
         const char* ignorePcrEnv = std::getenv("IGNORE_PCR");
@@ -121,4 +122,5 @@ struct Config
     bool bypass_audio_;
     bool bypass_video_;
     bool ignorePcr_;
+    bool vp8_;
 };
