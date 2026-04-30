@@ -19,3 +19,4 @@ mpeg-ts-client.xcodeproj/
 ## End Visual Studio Code
 .xmake/
 dot/
+.DS_Store

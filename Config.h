@@ -21,12 +21,13 @@ struct Config
           tsDemuxLatency_(0),
           jitterBufferLatency_(0),
           srtSourceLatency_(125),
-          h264encodeBitrate(2000),
+          videoEncodeBitrate(2000),
           audio_(true),
           video_(true),
           bypass_audio_(false),
           bypass_video_(false),
-          ignorePcr_(false)
+          ignorePcr_(false),
+          vp8_(false)
     {
         // Load ignorePcr from environment variable if set
         const char* ignorePcrEnv = std::getenv("IGNORE_PCR");
@@ -60,8 +61,8 @@ struct Config
         result.append("restreamPort: ");
         result.append(std::to_string(restreamPort_));
         result.append("\n");
-        result.append("h264encodeBitrate: ");
-        result.append(std::to_string(h264encodeBitrate));
+        result.append("videoEncodeBitrate: ");
+        result.append(std::to_string(videoEncodeBitrate));
         result.append("\n");
         result.append("showTimer: ");
         result.append(showTimer_ ? "true" : "false");
@@ -95,6 +96,9 @@ struct Config
         result.append("\n");
         result.append("ignore PCR: ");
         result.append(ignorePcr_ ? "true" : "false");
+        result.append("\n");
+        result.append("vp8: ");
+        result.append(vp8_ ? "true" : "false");
 
         return result;
     }
@@ -113,7 +117,7 @@ struct Config
     uint32_t tsDemuxLatency_;
     uint32_t jitterBufferLatency_;
     uint32_t srtSourceLatency_;
-    uint32_t h264encodeBitrate;
+    uint32_t videoEncodeBitrate;
 
     bool audio_;
     bool video_;
@@ -121,4 +125,5 @@ struct Config
     bool bypass_audio_;
     bool bypass_video_;
     bool ignorePcr_;
+    bool vp8_;
 };

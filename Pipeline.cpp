@@ -31,8 +31,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     makeElement(ElementLabel::MPEG2_PARSE, "mpegvideoparse");
     makeElement(ElementLabel::MPEG2_DECODE, "avdec_mpeg2video");
 
-    makeElement(ElementLabel::RTP_VIDEO_ENCODE, "x264enc");
-    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD, "rtph264pay");
+    makeElement(ElementLabel::RTP_VIDEO_ENCODE, config.vp8_ ? "vp8enc" : "x264enc");
+    makeElement(ElementLabel::RTP_VIDEO_PAYLOAD, config.vp8_ ? "rtpvp8pay" : "rtph264pay");
     makeElement(ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE, "queue");
     makeElement(ElementLabel::RTP_VIDEO_FILTER, "capsfilter");
 
@@ -69,21 +69,37 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         Logger::log("SIGHUP signal handler installed - send SIGHUP to dump pipeline state (GST_DEBUG_DUMP_DOT_DIR=%s)", dotDir);
     }
 
-    if (!config_.bypass_video_)
+    if (!config.bypass_video_)
     {
         g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
     }
 
-    g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
-        "threads",
-        2,
-        "bitrate",
-        config.h264encodeBitrate,
-        "tune",
-        1, // zerolatency
-        "speed-preset",
-        1, // ultrafast
-        nullptr);
+    if (config.vp8_)
+    {
+        g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
+            "target-bitrate",
+            config.videoEncodeBitrate * 1000,
+            "deadline",
+            1, // realtime
+            "cpu-used",
+            16, // fastest
+            "end-usage",
+            1, // CBR
+            nullptr);
+    }
+    else
+    {
+        g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
+            "threads",
+            2,
+            "bitrate",
+            config.videoEncodeBitrate,
+            "tune",
+            1, // zerolatency
+            "speed-preset",
+            1, // ultrafast
+            nullptr);
+    }
 
     if (config.audio_)
     {
@@ -115,7 +131,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             96,
             "encoding-name",
             G_TYPE_STRING,
-            "H264",
+            config.vp8_ ? "VP8" : "H264",
             nullptr));
 
         gst_element_link_filtered(elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
@@ -173,8 +189,11 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             // GST_SRT_CONNECTION_MODE_CALLER
             std::string srtUri = "srt://";
             srtUri.append(config.udpSourceAddress_);
-            srtUri.append(":");
-            srtUri.append(std::to_string(config.udpSourcePort_));
+            if (config.udpSourceAddress_.find(':') == std::string::npos)
+            {
+                srtUri.append(":");
+                srtUri.append(std::to_string(config.udpSourcePort_));
+            }
             Logger::log("SRT caller mode, connecting to %s", srtUri.c_str());
             g_object_set(elements_[ElementLabel::SRT_SOURCE],
                 "uri",
