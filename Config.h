@@ -21,7 +21,7 @@ struct Config
           tsDemuxLatency_(0),
           jitterBufferLatency_(0),
           srtSourceLatency_(125),
-          h264encodeBitrate(2000),
+          videoEncodeBitrate(2000),
           audio_(true),
           video_(true),
           bypass_audio_(false),
@@ -61,8 +61,8 @@ struct Config
         result.append("restreamPort: ");
         result.append(std::to_string(restreamPort_));
         result.append("\n");
-        result.append("h264encodeBitrate: ");
-        result.append(std::to_string(h264encodeBitrate));
+        result.append("videoEncodeBitrate: ");
+        result.append(std::to_string(videoEncodeBitrate));
         result.append("\n");
         result.append("showTimer: ");
         result.append(showTimer_ ? "true" : "false");
@@ -117,7 +117,7 @@ struct Config
     uint32_t tsDemuxLatency_;
     uint32_t jitterBufferLatency_;
     uint32_t srtSourceLatency_;
-    uint32_t h264encodeBitrate;
+    uint32_t videoEncodeBitrate;
 
     bool audio_;
     bool video_;

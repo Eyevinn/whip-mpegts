@@ -69,21 +69,16 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         Logger::log("SIGHUP signal handler installed - send SIGHUP to dump pipeline state (GST_DEBUG_DUMP_DOT_DIR=%s)", dotDir);
     }
 
-    if (!config_.bypass_video_)
+    if (!config.bypass_video_)
     {
         g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
-    }
-
-    if (config_.bypass_video_ && config_.vp8_)
-    {
-        Logger::log("WARNING: --bypass-video has no effect when --vp8 is set, video will be transcoded to VP8");
     }
 
     if (config.vp8_)
     {
         g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
             "target-bitrate",
-            config.h264encodeBitrate * 1000,
+            config.videoEncodeBitrate * 1000,
             "deadline",
             1, // realtime
             "cpu-used",
@@ -98,7 +93,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             "threads",
             2,
             "bitrate",
-            config.h264encodeBitrate,
+            config.videoEncodeBitrate,
             "tune",
             1, // zerolatency
             "speed-preset",

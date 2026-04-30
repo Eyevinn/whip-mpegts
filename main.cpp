@@ -43,7 +43,7 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  -d, --udpSourceQueueMinTime INT ms\n"
                           "  -r, --restreamAddress STRING\n"
                           "  -o, --restreamPort INT\n"
-                          "  -b, --h264EncodeBitrate INT (Kb)\n"
+                          "  -b, --h264EncodeBitrate INT Kb (video encode bitrate, applies to H264 and VP8)\n"
                           "  -t, --showTimer\n"
                           "  -s, --srtTransport\n"
                           "  -m, --srtMode INT (1=caller, 2=listener, default=2)\n"
@@ -125,7 +125,7 @@ int32_t main(int32_t argc, char** argv)
             config.restreamPort_ = std::strtoul(optarg, nullptr, 10);
             break;
         case 'b':
-            config.h264encodeBitrate = std::strtoul(optarg, nullptr, 10);
+            config.videoEncodeBitrate = std::strtoul(optarg, nullptr, 10);
             break;
         case 't':
             config.showTimer_ = true;
@@ -154,7 +154,7 @@ int32_t main(int32_t argc, char** argv)
             config.srtSourceLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
         case 13:
-            config.h264encodeBitrate = std::strtoul(optarg, nullptr, 10);
+            config.videoEncodeBitrate = std::strtoul(optarg, nullptr, 10);
             break;
         case 14:
             config.audio_ = false;
@@ -183,6 +183,12 @@ int32_t main(int32_t argc, char** argv)
         (!config.restreamAddress_.empty() && config.restreamPort_ == 0))
     {
         printf("%s\n", usageString);
+        return 1;
+    }
+
+    if (config.bypass_video_ && config.vp8_)
+    {
+        fprintf(stderr, "Error: --bypass-video and --vp8 cannot be used together\n");
         return 1;
     }
     Logger::log("Config:\n%s", config.toString().c_str());
