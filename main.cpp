@@ -11,6 +11,19 @@
 namespace
 {
 
+enum : int
+{
+    OPT_TS_DEMUX_LATENCY = 256,
+    OPT_JITTER_BUFFER_LATENCY,
+    OPT_SRT_SOURCE_LATENCY,
+    OPT_NO_AUDIO,
+    OPT_NO_VIDEO,
+    OPT_BYPASS_AUDIO,
+    OPT_BYPASS_VIDEO,
+    OPT_IGNORE_PCR,
+    OPT_VP8,
+};
+
 ::option longOptions[] = {{"udpSourceAddress", required_argument, nullptr, 'a'},
     {"udpSourcePort", required_argument, nullptr, 'p'},
     {"whipEndpointUrl", required_argument, nullptr, 'u'},
@@ -21,16 +34,16 @@ namespace
     {"showTimer", no_argument, nullptr, 't'},
     {"srtTransport", no_argument, nullptr, 's'},
     {"srtMode", required_argument, nullptr, 'm'},
-    {"tsDemuxLatency", required_argument, nullptr, 0},
-    {"jitterBufferLatency", required_argument, nullptr, 0},
-    {"srtSourceLatency", required_argument, nullptr, 0},
     {"h264EncodeBitrate", required_argument, nullptr, 'b'},
-    {"no-audio", no_argument, nullptr, 0},
-    {"no-video", no_argument, nullptr, 0},
-    {"bypass-audio", no_argument, nullptr, 0},
-    {"bypass-video", no_argument, nullptr, 0},
-    {"ignore-pcr", no_argument, nullptr, 0},
-    {"vp8", no_argument, nullptr, 0},
+    {"tsDemuxLatency", required_argument, nullptr, OPT_TS_DEMUX_LATENCY},
+    {"jitterBufferLatency", required_argument, nullptr, OPT_JITTER_BUFFER_LATENCY},
+    {"srtSourceLatency", required_argument, nullptr, OPT_SRT_SOURCE_LATENCY},
+    {"no-audio", no_argument, nullptr, OPT_NO_AUDIO},
+    {"no-video", no_argument, nullptr, OPT_NO_VIDEO},
+    {"bypass-audio", no_argument, nullptr, OPT_BYPASS_AUDIO},
+    {"bypass-video", no_argument, nullptr, OPT_BYPASS_VIDEO},
+    {"ignore-pcr", no_argument, nullptr, OPT_IGNORE_PCR},
+    {"vp8", no_argument, nullptr, OPT_VP8},
     {nullptr, no_argument, nullptr, 0}};
 
 const auto shortOptions = "a:p:u:k:d:r:o:b:m:ts";
@@ -97,9 +110,8 @@ int32_t main(int32_t argc, char** argv)
 
     Config config;
     int32_t getOptResult;
-    int32_t optIndex;
 
-    while ((getOptResult = getopt_long(argc, argv, shortOptions, longOptions, &optIndex)) != -1)
+    while ((getOptResult = getopt_long(argc, argv, shortOptions, longOptions, nullptr)) != -1)
     {
         switch (getOptResult)
         {
@@ -136,42 +148,31 @@ int32_t main(int32_t argc, char** argv)
         case 'm':
             config.srtMode_ = std::strtoul(optarg, nullptr, 10);
             break;
-        case 0:
-            break;
-        default:
-            break;
-        }
-
-        switch (optIndex)
-        {
-        case 10:
+        case OPT_TS_DEMUX_LATENCY:
             config.tsDemuxLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
-        case 11:
+        case OPT_JITTER_BUFFER_LATENCY:
             config.jitterBufferLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
-        case 12:
+        case OPT_SRT_SOURCE_LATENCY:
             config.srtSourceLatency_ = std::strtoul(optarg, nullptr, 10);
             break;
-        case 13:
-            config.videoEncodeBitrate = std::strtoul(optarg, nullptr, 10);
-            break;
-        case 14:
+        case OPT_NO_AUDIO:
             config.audio_ = false;
             break;
-        case 15:
+        case OPT_NO_VIDEO:
             config.video_ = false;
             break;
-        case 16:
+        case OPT_BYPASS_AUDIO:
             config.bypass_audio_ = true;
             break;
-        case 17:
+        case OPT_BYPASS_VIDEO:
             config.bypass_video_ = true;
             break;
-        case 18:
+        case OPT_IGNORE_PCR:
             config.ignorePcr_ = true;
             break;
-        case 19:
+        case OPT_VP8:
             config.vp8_ = true;
             break;
         default:
