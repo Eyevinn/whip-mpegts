@@ -96,6 +96,9 @@ struct Config
         result.append("\n");
         result.append("ignore PCR: ");
         result.append(ignorePcr_ ? "true" : "false");
+        result.append("\n");
+        result.append("vp8: ");
+        result.append(vp8_ ? "true" : "false");
 
         return result;
     }

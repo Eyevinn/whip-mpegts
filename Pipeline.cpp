@@ -74,6 +74,11 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         g_object_set(elements_[ElementLabel::H264_PARSE], "disable-passthrough", TRUE, nullptr);
     }
 
+    if (config_.bypass_video_ && config_.vp8_)
+    {
+        Logger::log("WARNING: --bypass-video has no effect when --vp8 is set, video will be transcoded to VP8");
+    }
+
     if (config.vp8_)
     {
         g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE],
@@ -189,7 +194,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             // GST_SRT_CONNECTION_MODE_CALLER
             std::string srtUri = "srt://";
             srtUri.append(config.udpSourceAddress_);
-            if (config.udpSourceAddress_.find('?') == std::string::npos)
+            if (config.udpSourceAddress_.find(':') == std::string::npos)
             {
                 srtUri.append(":");
                 srtUri.append(std::to_string(config.udpSourcePort_));
