@@ -75,6 +75,62 @@ ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -f lavfi -i sine=frequency=
 
 Open [Broadcast Box](https://b.siobud.com) in browser and type in the same Stream Key (e.g., testingstream123) and click "Watch Stream".
 
+### No-transcode passthrough (H264 / OPUS)
+
+By default, `whip-mpegts` decodes the incoming MPEG-TS elementary streams and
+re-encodes them (H264 video via `x264enc`, OPUS audio via `opusenc`) before
+sending them to the WHIP endpoint. When the source is already encoded as H264
+video and/or OPUS audio, you can skip that decode/encode step and forward the
+elementary streams unchanged:
+
+- `--bypass-video` — skip video transcoding. Only works with H264. The parsed
+  H264 access units are payloaded (`rtph264pay`) and sent as-is; no decoder or
+  encoder is inserted.
+- `--bypass-audio` — skip audio transcoding. Only works with OPUS. The parsed
+  OPUS frames are payloaded (`rtpopuspay`) and sent as-is; no decoder or encoder
+  is inserted.
+
+The two flags are independent — you can bypass video, audio, or both. Because
+nothing on the bypass path modifies the media, the incoming stream must already
+match what the WHIP endpoint accepts: **H264 video for `--bypass-video`, OPUS
+audio for `--bypass-audio`**. If the demuxed video is not `video/x-h264` (or the
+audio is not `audio/x-opus`), the bypass pad handler will not be linked.
+
+On the bypass path all encoder-controlled properties are the **source encoder's
+responsibility**, not this tool's:
+
+- H264 profile/level (e.g. constrained-baseline) — set on the source encoder.
+- Keyframe (IDR) cadence — set on the source encoder; the WHIP/WebRTC receiver
+  relies on the source's GOP structure.
+- Bitrate — `-b, --h264EncodeBitrate` has no effect on a bypassed stream, since
+  no re-encode happens.
+
+`--bypass-video` cannot be combined with `--vp8`; the tool exits with an error
+if both are given (VP8 requires transcoding).
+
+> **Note:** Configuring the WHIP/SFU endpoint itself to accept and forward H264
+> is out of scope for this repository and is tracked separately.
+
+#### Example: bypass-compatible H264/OPUS MPEG-TS
+
+Produce a stream whose video is already H264 (constrained-baseline) and whose
+audio is already OPUS, muxed into MPEG-TS over SRT, then run `whip-mpegts` with
+both bypass flags:
+
+```bash
+# Generate an H264/OPUS testing stream with GStreamer as SRT caller
+gst-launch-1.0 -v \
+    videotestsrc ! clockoverlay ! video/x-raw, height=360, width=640 ! videoconvert ! x264enc tune=zerolatency key-int-max=30 ! video/x-h264, profile=constrained-baseline ! mux. \
+    audiotestsrc ! audio/x-raw, format=S16LE, channels=2, rate=48000 ! audioconvert ! opusenc ! mux. \
+    mpegtsmux name=mux ! queue ! srtsink uri="srt://127.0.0.1:9998?mode=caller" wait-for-connection=false
+
+# Start whip-mpegts in listener mode with no transcoding on either track
+./whip-mpegts -a "127.0.0.1" -p 9998 -u "https://b.siobud.com/api/whip" -k "testingstream123" -s --bypass-video --bypass-audio
+```
+
+Here `key-int-max=30` and `profile=constrained-baseline` are chosen on the
+source encoder, since on the bypass path this tool forwards them unchanged.
+
 ## Debugging
 
 ### Pipeline State Debugging
