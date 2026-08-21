@@ -37,6 +37,7 @@ Usage: whip-mpegts [OPTION]
   --no-video
   --bypass-audio
   --bypass-video
+  --vp8
 ```
 
 Flags:
@@ -46,6 +47,7 @@ Flags:
 - \-m Set SRT mode: 1 for caller (connect to remote), 2 for listener (wait for connection, default)
 - \--bypass-video Skip video transcoding (no decode/encode). Only works when the input video is already H264. Cannot be combined with `--vp8`.
 - \--bypass-audio Skip audio transcoding (no decode/encode). Only works when the input audio is already OPUS.
+- \--vp8 Encode video as VP8 instead of H264 (cannot be combined with `--bypass-video`).
 
 ### Recommended input codecs
 
@@ -76,6 +78,22 @@ Note: this bitrate control applies to video only. There is currently no separate
 bitrate flag; audio is re-encoded to Opus (`opusenc`) using the encoder's default settings. When
 video transcoding is skipped with `--bypass-video`, `-b` has no effect since the incoming H264 is
 passed through unchanged.
+
+### How it works
+
+Media is not forwarded untouched — by default it is demuxed, decoded and re-encoded before being sent over WebRTC. The incoming MPEG-TS stream is demuxed with GStreamer's `tsdemux` element, which exposes separate video and audio streams.
+
+Video handling depends on the codec found in the transport stream:
+
+- H264 (`video/x-h264`) is parsed with `h264parse` and decoded with `avdec_h264`.
+- H265/HEVC (`video/x-h265`) is parsed with `h265parse` and decoded with `avdec_h265`.
+- MPEG-2 video (`video/mpeg`) is parsed with `mpegvideoparse` and decoded with `avdec_mpeg2video`.
+
+The decoded video is passed through `videoconvert` and re-encoded to **H264** with `x264enc` (or to **VP8** with `vp8enc` when `--vp8` is given), then payloaded for RTP with `rtph264pay` (or `rtpvp8pay` for VP8). The `--bypass-video` flag skips decode/re-encode and payloads the incoming H264 directly; it only works for H264 input.
+
+Audio is likewise decoded and re-encoded. AAC (`audio/mpeg`) is handled by `aacparse` + `avdec_aac`, Opus (`audio/x-opus`) by `opusparse` + `opusdec`, and raw PCM (`audio/x-raw`) by `rawaudioparse`. The audio then passes through `audioconvert` and `audioresample` and is re-encoded to **Opus** with `opusenc` and payloaded with `rtpopuspay`. The `--bypass-audio` flag skips decode/re-encode and payloads incoming Opus directly; it only works for Opus input.
+
+The re-encoded RTP streams are fed into `webrtcbin` and delivered to the WHIP endpoint. As a result the WHIP egress is always **H264 (or VP8) video + Opus audio**, regardless of the codecs carried inside the source MPEG-TS.
 
 ### Quick Start
 To play out a testing stream and watch it in browser, we can use [Broadcast Box](https://github.com/Glimesh/broadcast-box).
