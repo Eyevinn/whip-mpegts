@@ -44,8 +44,19 @@ Flags:
 - \-t Enable burned in timer
 - \-s Enable SRT transport for receiving MPEG-TS and also use SRT when restreaming
 - \-m Set SRT mode: 1 for caller (connect to remote), 2 for listener (wait for connection, default)
-- \--bypass-video Skip video transcoding. Only works with H264.
-- \--bypass-audio Skip audio transcoding. Only works with OPUS.
+- \--bypass-video Skip video transcoding (no decode/encode). Only works when the input video is already H264. Cannot be combined with `--vp8`.
+- \--bypass-audio Skip audio transcoding (no decode/encode). Only works when the input audio is already OPUS.
+
+### Recommended input codecs
+
+By default whip-mpegts **transcodes** both video and audio: it decodes the incoming stream, then re-encodes video to H264 (or VP8 with `--vp8`) and audio to OPUS before sending to the WHIP endpoint. Transcoding is the most CPU-intensive part of the pipeline.
+
+Passthrough (no decode, no encode) is available only for the codecs WebRTC uses natively:
+
+- **H264 video** with `--bypass-video` — the H264 stream is parsed and payloaded directly, skipping decode/encode. Requires the input video to already be H264, and cannot be combined with `--vp8`.
+- **OPUS audio** with `--bypass-audio` — the OPUS stream is parsed and payloaded directly, skipping decode/encode. Requires the input audio to already be OPUS.
+
+**H264 video + OPUS audio is therefore the least-work input combination**: with both `--bypass-video` and `--bypass-audio` the pipeline does no transcoding at all. Other codecs are always decoded and re-encoded — for example AAC audio is always decoded and re-encoded to OPUS, as there is no AAC passthrough path.
 
 ### Quick Start
 To play out a testing stream and watch it in browser, we can use [Broadcast Box](https://github.com/Glimesh/broadcast-box).
