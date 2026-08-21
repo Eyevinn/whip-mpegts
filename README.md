@@ -26,7 +26,7 @@ Usage: whip-mpegts [OPTION]
   -d, --udpSourceQueueMinTime INT ms
   -r, --restreamAddress STRING
   -o, --restreamPort INT
-  -b, --h264EncodeBitrate INT kb
+  -b, --h264EncodeBitrate INT kb (video encode bitrate, applies to H264 and VP8)
   -t, --showTimer
   -s, --srtTransport
   -m, --srtMode INT (1=caller, 2=listener, default=2)
@@ -46,6 +46,25 @@ Flags:
 - \-m Set SRT mode: 1 for caller (connect to remote), 2 for listener (wait for connection, default)
 - \--bypass-video Skip video transcoding. Only works with H264.
 - \--bypass-audio Skip audio transcoding. Only works with OPUS.
+
+### Output bitrate
+
+The output video bitrate is directly controllable via `-b, --h264EncodeBitrate INT`, which sets
+the encoder's target bitrate in kilobits per second (kb). It defaults to **2000 kb**. Despite the
+`h264` in the flag name, the value applies to both the H264 (`x264enc`) and VP8 (`vp8enc`)
+encoders — it is passed as the `bitrate` property on `x264enc`, and as `target-bitrate`
+(converted to bits/s) on `vp8enc` when running with `--vp8`.
+
+Because the encoder always re-encodes to this target, the output bitrate is set by `-b` regardless
+of the input stream's bitrate. The input bitrate only influences the output when transcoding is
+active, and even then the encoder re-encodes to the configured target — so observing "lower input
+gives lower output" is incidental, not the intended control knob. Use `-b` to control output
+bitrate.
+
+Note: this bitrate control applies to video only. There is currently no separate output audio
+bitrate flag; audio is re-encoded to Opus (`opusenc`) using the encoder's default settings. When
+video transcoding is skipped with `--bypass-video`, `-b` has no effect since the incoming H264 is
+passed through unchanged.
 
 ### Quick Start
 To play out a testing stream and watch it in browser, we can use [Broadcast Box](https://github.com/Glimesh/broadcast-box).
