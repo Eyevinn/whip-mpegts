@@ -148,7 +148,9 @@ bool WhipClient::updateIce(const std::string& resourceUrl, const std::string& et
     SoupMessageHeaders* requestHeaders = soup_message_get_request_headers(soupMessage);
     if (!authKey_.empty())
     {
-        soup_message_headers_append(requestHeaders, "Authorization", authKey_.c_str());
+        // This is for Broadcast Box compatibility (same as OBS studio)
+        auto bearer_token_header = std::string("Bearer ") + authKey_;
+        soup_message_headers_append(requestHeaders, "Authorization", bearer_token_header.c_str());
     }
     if (!etag.empty())
     {
