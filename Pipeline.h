@@ -39,6 +39,17 @@ public:
     static void onIceCandidateCallback(GstElement* /*webrtc*/, guint mLineIndex, gchar* candidate, gpointer userData);
     static gboolean signalHandlerCallback(gpointer userData);
 
+    // GCC bandwidth estimator (issue #44): webrtcbin requests an aux sender for each send
+    // transport; we return an rtpgccbwe element seeded from the configured video bitrate and
+    // observe its estimate. The estimate is only logged for now (issue #45 will act on it).
+    static GstElement* requestAuxSenderCallback(GstElement* webRtcBin,
+        guint sessionId,
+        gpointer userData);
+    static void estimatedBitrateNotifyCallback(GstObject* gccBwe, GParamSpec* pspec, gpointer userData);
+
+    GstElement* onRequestAuxSender(guint sessionId);
+    void onEstimatedBitrate(GstObject* gccBwe);
+
 private:
 private:
     enum class ElementLabel
@@ -100,6 +111,10 @@ private:
 
     std::string whipResource_;
     std::string etag_;
+
+    // Throttle for the GCC estimated-bitrate log (issue #44). The notify fires on the
+    // estimator's streaming thread, so this is only touched from that handler.
+    std::chrono::steady_clock::time_point lastEstimateLog_;
 
     void makeElement(const ElementLabel elementLabel, const char* element);
     void onH264SinkPadAdded(GstPad* newPad);
