@@ -79,6 +79,7 @@ private:
         MPEG2_DECODE,
 
         RTP_VIDEO_ENCODE,
+        RTP_VIDEO_ENCODE_CAPS,
         RTP_VIDEO_PAYLOAD,
         RTP_VIDEO_PAYLOAD_QUEUE,
         RTP_VIDEO_FILTER,
