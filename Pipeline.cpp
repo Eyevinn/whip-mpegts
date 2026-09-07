@@ -134,6 +134,17 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             config.vp8_ ? "VP8" : "H264",
             nullptr));
 
+        // For H264, pin the RTP packetization-mode so it is advertised in the WHIP offer's
+        // fmtp line and matches what the SFU negotiates/expects. VP8 has no packetization-mode.
+        if (!config.vp8_)
+        {
+            gst_caps_set_simple(rtpVideoFilterCaps.get(),
+                "packetization-mode",
+                G_TYPE_STRING,
+                std::to_string(config.h264PacketizationMode_).c_str(),
+                nullptr);
+        }
+
         gst_element_link_filtered(elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
             elements_[ElementLabel::WEBRTC_BIN],
             rtpVideoFilterCaps.get());
