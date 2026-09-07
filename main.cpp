@@ -192,6 +192,12 @@ int32_t main(int32_t argc, char** argv)
         fprintf(stderr, "Error: --bypass-video and --vp8 cannot be used together\n");
         return 1;
     }
+
+    if (config.srtMode_ != 1 && config.srtMode_ != 2)
+    {
+        fprintf(stderr, "Error: --srtMode must be 1 (caller) or 2 (listener)\n");
+        return 1;
+    }
     Logger::log("Config:\n%s", config.toString().c_str());
 
     mainLoop = g_main_loop_new(nullptr, FALSE);
