@@ -22,6 +22,7 @@ enum : int
     OPT_BYPASS_VIDEO,
     OPT_IGNORE_PCR,
     OPT_VP8,
+    OPT_H264_PACKETIZATION_MODE,
 };
 
 ::option longOptions[] = {{"udpSourceAddress", required_argument, nullptr, 'a'},
@@ -44,6 +45,7 @@ enum : int
     {"bypass-video", no_argument, nullptr, OPT_BYPASS_VIDEO},
     {"ignore-pcr", no_argument, nullptr, OPT_IGNORE_PCR},
     {"vp8", no_argument, nullptr, OPT_VP8},
+    {"h264PacketizationMode", required_argument, nullptr, OPT_H264_PACKETIZATION_MODE},
     {nullptr, no_argument, nullptr, 0}};
 
 const auto shortOptions = "a:p:u:k:d:r:o:b:m:ts";
@@ -68,7 +70,8 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  --bypass-audio\n"
                           "  --bypass-video\n"
                           "  --ignore-pcr (can also use IGNORE_PCR env var)\n"
-                          "  --vp8 (encode video as VP8 instead of H264)\n";
+                          "  --vp8 (encode video as VP8 instead of H264)\n"
+                          "  --h264PacketizationMode INT (H264 RTP packetization-mode, 0 or 1, default=1)\n";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -174,6 +177,9 @@ int32_t main(int32_t argc, char** argv)
             break;
         case OPT_VP8:
             config.vp8_ = true;
+            break;
+        case OPT_H264_PACKETIZATION_MODE:
+            config.h264PacketizationMode_ = std::strtoul(optarg, nullptr, 10);
             break;
         default:
             break;

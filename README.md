@@ -38,6 +38,7 @@ Usage: whip-mpegts [OPTION]
   --bypass-audio
   --bypass-video
   --vp8
+  --h264PacketizationMode INT (0 or 1, default=1)
 ```
 
 Flags:
@@ -78,6 +79,16 @@ Note: this bitrate control applies to video only. There is currently no separate
 bitrate flag; audio is re-encoded to Opus (`opusenc`) using the encoder's default settings. When
 video transcoding is skipped with `--bypass-video`, `-b` has no effect since the incoming H264 is
 passed through unchanged.
+
+### H264 RTP packetization mode
+
+`--h264PacketizationMode INT` controls the H264 RTP packetization-mode that is advertised in the
+WHIP offer's H264 `fmtp` line, so it can be matched to what the receiving SFU negotiates/expects.
+It is signalled via the outgoing RTP capsfilter feeding `webrtcbin`, so it applies to **both** the
+transcode path and the `--bypass-video` passthrough path. Valid values are `0` (single NAL unit /
+non-interleaved without aggregation) and `1` (non-interleaved, allowing STAP-A/FU-A). The default
+is `1`, which preserves the previous behaviour. The flag has no effect when encoding VP8
+(`--vp8`), which has no packetization-mode.
 
 ### How it works
 

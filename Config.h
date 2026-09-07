@@ -22,6 +22,7 @@ struct Config
           jitterBufferLatency_(0),
           srtSourceLatency_(125),
           videoEncodeBitrate(2000),
+          h264PacketizationMode_(1),
           audio_(true),
           video_(true),
           bypass_audio_(false),
@@ -63,6 +64,9 @@ struct Config
         result.append("\n");
         result.append("videoEncodeBitrate: ");
         result.append(std::to_string(videoEncodeBitrate));
+        result.append("\n");
+        result.append("h264PacketizationMode: ");
+        result.append(std::to_string(h264PacketizationMode_));
         result.append("\n");
         result.append("showTimer: ");
         result.append(showTimer_ ? "true" : "false");
@@ -118,6 +122,7 @@ struct Config
     uint32_t jitterBufferLatency_;
     uint32_t srtSourceLatency_;
     uint32_t videoEncodeBitrate;
+    uint32_t h264PacketizationMode_;
 
     bool audio_;
     bool video_;
