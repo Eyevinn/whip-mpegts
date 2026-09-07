@@ -30,7 +30,8 @@ struct Config
           bypass_audio_(false),
           bypass_video_(false),
           ignorePcr_(false),
-          vp8_(false)
+          vp8_(false),
+          congestionControl_(false)
     {
         // Load ignorePcr from environment variable if set
         const char* ignorePcrEnv = std::getenv("IGNORE_PCR");
@@ -111,6 +112,9 @@ struct Config
         result.append("\n");
         result.append("vp8: ");
         result.append(vp8_ ? "true" : "false");
+        result.append("\n");
+        result.append("congestionControl: ");
+        result.append(congestionControl_ ? "true" : "false");
 
         return result;
     }
@@ -141,4 +145,5 @@ struct Config
     bool bypass_video_;
     bool ignorePcr_;
     bool vp8_;
+    bool congestionControl_;
 };

@@ -181,15 +181,23 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     // Wire the GCC bandwidth estimator into the send-side webrtcbin (issue #44). webrtcbin asks
     // the application for an aux sender per send transport via "request-aux-sender"; we hand back
     // an rtpgccbwe element that consumes incoming TWCC feedback and produces an estimated
-    // available bitrate. The estimate is only logged for now; acting on it is issue #45. The
-    // rtpgccbwe element lives in gst-plugins-rs and may be absent from the image, so guard on its
-    // availability and degrade gracefully (unchanged behaviour) when it is missing.
-    if (config.video_)
+    // available bitrate. When --congestion-control is set the estimate is applied to the video
+    // encoder bitrate (issue #45); otherwise it is only logged. The rtpgccbwe element lives in
+    // gst-plugins-rs and may be absent from the image, so guard on its availability and degrade
+    // gracefully (unchanged behaviour) when it is missing.
+    //
+    // Gating (issue #46): the whole estimator is wired up only when the opt-in flag is set. With
+    // the flag off, behaviour is byte-for-byte the pre-existing static config.videoEncodeBitrate
+    // path (no estimator, no dynamic updates). --bypass-video has no encoder on its passthrough
+    // path, so dynamic bitrate has nothing to act on; the flag is a no-op there and we skip the
+    // wiring entirely rather than attaching an estimator that could never re-target anything.
+    if (config.congestionControl_ && config.video_ && !config.bypass_video_)
     {
         utils::ScopedGLibObject<GstElementFactory*> gccFactory(gst_element_factory_find("rtpgccbwe"));
         if (gccFactory.get() != nullptr)
         {
-            Logger::log("rtpgccbwe available - connecting GCC bandwidth estimator to webrtcbin");
+            Logger::log(
+                "rtpgccbwe available - connecting GCC bandwidth estimator to webrtcbin (congestion control on)");
             g_signal_connect(elements_[ElementLabel::WEBRTC_BIN],
                 "request-aux-sender",
                 G_CALLBACK(requestAuxSenderCallback),
@@ -197,8 +205,12 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         }
         else
         {
-            Logger::log("rtpgccbwe element not found - GCC bandwidth estimation disabled");
+            Logger::log("rtpgccbwe element not found - sender congestion control disabled");
         }
+    }
+    else if (config.congestionControl_ && config.bypass_video_)
+    {
+        Logger::log("--congestion-control has no effect with --bypass-video (no encoder to re-target) - ignoring");
     }
 
     makeElement(ElementLabel::UDP_QUEUE, "queue");
@@ -924,20 +936,21 @@ GstElement* Pipeline::onRequestAuxSender(guint sessionId)
     // target-bitrate conversion above): min = 10% of target, start = target, max = target.
     const guint targetBps = config_.videoEncodeBitrate * 1000;
     const guint minBps = targetBps / 10;
-    g_object_set(gccBwe,
-        "min-bitrate",
-        minBps,
-        "estimated-bitrate",
-        targetBps,
-        "max-bitrate",
-        targetBps,
-        nullptr);
+    g_object_set(gccBwe, "min-bitrate", minBps, "estimated-bitrate", targetBps, "max-bitrate", targetBps, nullptr);
 
     Logger::log("Created rtpgccbwe for session %u (min=%u start=%u max=%u bps)",
         sessionId,
         minBps,
         targetBps,
         targetBps);
+
+    // Remember the clamp bounds (bits per second) so estimates applied to the encoder never fall
+    // below 10% of the configured target or exceed it (issue #45). Seed lastAppliedBitrate_ with
+    // the configured target because that is what the encoder was statically configured with.
+    minEncoderBitrateBps_ = minBps;
+    maxEncoderBitrateBps_ = targetBps;
+    lastAppliedBitrateBps_ = targetBps;
+    lastBitrateApply_ = std::chrono::steady_clock::time_point{};
 
     lastEstimateLog_ = std::chrono::steady_clock::time_point{};
     g_signal_connect(gccBwe, "notify::estimated-bitrate", G_CALLBACK(estimatedBitrateNotifyCallback), this);
@@ -953,18 +966,60 @@ void Pipeline::estimatedBitrateNotifyCallback(GstObject* gccBwe, GParamSpec* /*p
 
 void Pipeline::onEstimatedBitrate(GstObject* gccBwe)
 {
-    // Fires on the estimator's own streaming thread. Throttle the log to at most once per second
-    // so the estimation loop is observable without flooding the log. Do NOT act on the estimate
-    // yet - re-targeting the encoder is issue #45.
+    // Fires on the estimator's own streaming thread. Read the current estimate first.
+    guint estimatedBps = 0;
+    g_object_get(gccBwe, "estimated-bitrate", &estimatedBps, nullptr);
+
     const auto now = std::chrono::steady_clock::now();
-    if (lastEstimateLog_ != std::chrono::steady_clock::time_point{} &&
-        (now - lastEstimateLog_) < std::chrono::seconds(1))
+
+    // Throttle the log to at most once per second so the estimation loop is observable without
+    // flooding the log.
+    if (lastEstimateLog_ == std::chrono::steady_clock::time_point{} ||
+        (now - lastEstimateLog_) >= std::chrono::seconds(1))
+    {
+        lastEstimateLog_ = now;
+        Logger::log("GCC estimated available bitrate: %u bps (%u kb/s)", estimatedBps, estimatedBps / 1000);
+    }
+
+    // The estimator is only wired up when congestion control is enabled (issue #46 gates the
+    // signal connection in the constructor), so reaching here already implies the flag is on and
+    // an encoder exists (never the --bypass-video path). Apply the estimate to the encoder.
+    //
+    // Clamp to [min, max] (bits per second) so we never starve or overshoot the configured
+    // target, then rate-limit to at most once per second and skip sub-2% changes so we do not
+    // thrash the encoder with churn from the continuously updating estimate (issue #45).
+    guint targetBps = std::max(minEncoderBitrateBps_, std::min(estimatedBps, maxEncoderBitrateBps_));
+
+    if (lastBitrateApply_ != std::chrono::steady_clock::time_point{} &&
+        (now - lastBitrateApply_) < std::chrono::seconds(1))
     {
         return;
     }
-    lastEstimateLog_ = now;
 
-    guint estimatedBps = 0;
-    g_object_get(gccBwe, "estimated-bitrate", &estimatedBps, nullptr);
-    Logger::log("GCC estimated available bitrate: %u bps (%u kb/s)", estimatedBps, estimatedBps / 1000);
+    const guint delta =
+        targetBps > lastAppliedBitrateBps_ ? targetBps - lastAppliedBitrateBps_ : lastAppliedBitrateBps_ - targetBps;
+    if (lastAppliedBitrateBps_ != 0 && delta < (lastAppliedBitrateBps_ / 50))
+    {
+        return;
+    }
+
+    // Setting the encoder bitrate directly from this streaming-thread handler is safe: GObject
+    // property setters take the instance lock, and both x264enc "bitrate" and vp8enc
+    // "target-bitrate" are GST_PARAM_MUTABLE_PLAYING, i.e. defined to be changeable at runtime
+    // while the element is PLAYING. So no marshalling to the main loop is required.
+    //
+    // Respect the unit difference already present in Pipeline.cpp: x264enc "bitrate" is in kb/s,
+    // vp8enc "target-bitrate" is in bits per second.
+    if (config_.vp8_)
+    {
+        g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE], "target-bitrate", targetBps, nullptr);
+    }
+    else
+    {
+        g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE], "bitrate", targetBps / 1000, nullptr);
+    }
+
+    lastAppliedBitrateBps_ = targetBps;
+    lastBitrateApply_ = now;
+    Logger::log("Applied congestion-controlled encoder bitrate: %u bps (%u kb/s)", targetBps, targetBps / 1000);
 }
