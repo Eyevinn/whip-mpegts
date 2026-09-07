@@ -168,6 +168,29 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
         this);
     g_signal_connect(elements_[ElementLabel::WEBRTC_BIN], "on-ice-candidate", G_CALLBACK(onIceCandidateCallback), this);
 
+    // Wire the GCC bandwidth estimator into the send-side webrtcbin (issue #44). webrtcbin asks
+    // the application for an aux sender per send transport via "request-aux-sender"; we hand back
+    // an rtpgccbwe element that consumes incoming TWCC feedback and produces an estimated
+    // available bitrate. The estimate is only logged for now; acting on it is issue #45. The
+    // rtpgccbwe element lives in gst-plugins-rs and may be absent from the image, so guard on its
+    // availability and degrade gracefully (unchanged behaviour) when it is missing.
+    if (config.video_)
+    {
+        utils::ScopedGLibObject<GstElementFactory*> gccFactory(gst_element_factory_find("rtpgccbwe"));
+        if (gccFactory.get() != nullptr)
+        {
+            Logger::log("rtpgccbwe available - connecting GCC bandwidth estimator to webrtcbin");
+            g_signal_connect(elements_[ElementLabel::WEBRTC_BIN],
+                "request-aux-sender",
+                G_CALLBACK(requestAuxSenderCallback),
+                this);
+        }
+        else
+        {
+            Logger::log("rtpgccbwe element not found - GCC bandwidth estimation disabled");
+        }
+    }
+
     makeElement(ElementLabel::UDP_QUEUE, "queue");
     makeElement(ElementLabel::TS_DEMUX, "tsdemux");
     if (!gst_element_link_many(elements_[ElementLabel::UDP_QUEUE], elements_[ElementLabel::TS_DEMUX], nullptr))
@@ -864,4 +887,71 @@ gboolean Pipeline::signalHandlerCallback(gpointer userData)
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-sighup");
     Logger::log("Pipeline .dot file dumped: pipeline-sighup.dot");
     return G_SOURCE_CONTINUE; // Keep the signal handler active
+}
+
+GstElement* Pipeline::requestAuxSenderCallback(GstElement* /*webRtcBin*/, guint sessionId, gpointer userData)
+{
+    auto pipelineImpl = reinterpret_cast<Pipeline*>(userData);
+    return pipelineImpl->onRequestAuxSender(sessionId);
+}
+
+GstElement* Pipeline::onRequestAuxSender(guint sessionId)
+{
+    // Create the GCC estimator. Availability was already checked before connecting the signal,
+    // but guard again in case the element cannot be instantiated for some reason.
+    GstElement* gccBwe = gst_element_factory_make("rtpgccbwe", nullptr);
+    if (gccBwe == nullptr)
+    {
+        Logger::log("Unable to make rtpgccbwe element for session %u - no bandwidth estimation", sessionId);
+        return nullptr;
+    }
+
+    // Seed the estimator from the configured video bitrate. rtpgccbwe bitrate properties are in
+    // bits per second, while config.videoEncodeBitrate is in kb/s (mirroring the VP8
+    // target-bitrate conversion above): min = 10% of target, start = target, max = target.
+    const guint targetBps = config_.videoEncodeBitrate * 1000;
+    const guint minBps = targetBps / 10;
+    g_object_set(gccBwe,
+        "min-bitrate",
+        minBps,
+        "estimated-bitrate",
+        targetBps,
+        "max-bitrate",
+        targetBps,
+        nullptr);
+
+    Logger::log("Created rtpgccbwe for session %u (min=%u start=%u max=%u bps)",
+        sessionId,
+        minBps,
+        targetBps,
+        targetBps);
+
+    lastEstimateLog_ = std::chrono::steady_clock::time_point{};
+    g_signal_connect(gccBwe, "notify::estimated-bitrate", G_CALLBACK(estimatedBitrateNotifyCallback), this);
+
+    return gccBwe;
+}
+
+void Pipeline::estimatedBitrateNotifyCallback(GstObject* gccBwe, GParamSpec* /*pspec*/, gpointer userData)
+{
+    auto pipelineImpl = reinterpret_cast<Pipeline*>(userData);
+    pipelineImpl->onEstimatedBitrate(gccBwe);
+}
+
+void Pipeline::onEstimatedBitrate(GstObject* gccBwe)
+{
+    // Fires on the estimator's own streaming thread. Throttle the log to at most once per second
+    // so the estimation loop is observable without flooding the log. Do NOT act on the estimate
+    // yet - re-targeting the encoder is issue #45.
+    const auto now = std::chrono::steady_clock::now();
+    if (lastEstimateLog_ != std::chrono::steady_clock::time_point{} &&
+        (now - lastEstimateLog_) < std::chrono::seconds(1))
+    {
+        return;
+    }
+    lastEstimateLog_ = now;
+
+    guint estimatedBps = 0;
+    g_object_get(gccBwe, "estimated-bitrate", &estimatedBps, nullptr);
+    Logger::log("GCC estimated available bitrate: %u bps (%u kb/s)", estimatedBps, estimatedBps / 1000);
 }

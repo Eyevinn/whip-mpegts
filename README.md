@@ -190,6 +190,21 @@ gst-launch-1.0 -v \
 Here `key-int-max=30` and `profile=constrained-baseline` are chosen on the
 source encoder, since on the bypass path this tool forwards them unchanged.
 
+## Bandwidth estimation (experimental)
+
+When the send path negotiates transport-wide congestion control (TWCC), `whip-mpegts` can attach a
+Google Congestion Control (GCC) bandwidth estimator to the outgoing `webrtcbin` for the **video**
+track. The estimator (`rtpgccbwe`) consumes the TWCC feedback returned by the receiver and produces
+a continuously updated estimate of the available uplink bitrate. The estimator is seeded from the
+configured video bitrate (`-b, --h264EncodeBitrate`): minimum = 10% of the target, start = the
+target, maximum = the target (all in bits per second).
+
+At this stage the estimate is only **logged** (throttled to about once per second) so the loop can
+be observed; it does **not** yet change the encoder bitrate — reacting to the estimate is tracked
+separately. The estimator is attached only when the `rtpgccbwe` element is present in the GStreamer
+installation; if it is missing, bandwidth estimation is skipped and behaviour is unchanged. It
+applies to the video transceiver only; the Opus audio track is out of scope.
+
 ## Debugging
 
 ### Pipeline State Debugging
