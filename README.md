@@ -40,6 +40,7 @@ Usage: whip-mpegts [OPTION]
   --vp8
   --h264PacketizationMode INT (0 or 1, default=1)
   --h264Profile STRING (default=constrained-baseline)
+  --h264KeyframeInterval INT (frames, default=60)
 ```
 
 Flags:
@@ -101,6 +102,18 @@ unchanged when the flag is omitted. Typical values are `constrained-baseline`, `
 and `high`. This only affects the **transcode** path: with `--bypass-video` the incoming H264 is
 forwarded unchanged and its profile is the upstream encoder's responsibility, and with `--vp8` the
 flag has no effect (VP8 has no H264 profile).
+
+### Keyframe interval
+
+For WebRTC/SFU delivery, keyframes (IDR frames) must appear frequently so late-joining
+subscribers can start decoding quickly. On the transcode path the H264 encoder (`x264enc`) is
+configured with `key-int-max` set from `--h264KeyframeInterval INT` (in **frames**), defaulting to
+`60` — roughly one keyframe every two seconds at 30 fps. Lower the value for faster recovery at the
+cost of bitrate efficiency.
+
+This only affects the **transcode** path. With `--bypass-video` the keyframe cadence is entirely
+the upstream encoder's responsibility, since the incoming H264 is forwarded unchanged. The flag
+also has no effect when encoding VP8 (`--vp8`).
 
 ### How it works
 

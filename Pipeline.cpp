@@ -99,6 +99,8 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             1, // zerolatency
             "speed-preset",
             1, // ultrafast
+            "key-int-max",
+            config.h264KeyframeInterval_, // frequent IDR frames for WebRTC/SFU late-join recovery
             nullptr);
 
         // Pin the encoded H264 profile via caps on the encoder src, mirroring the

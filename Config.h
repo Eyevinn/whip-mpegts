@@ -24,6 +24,7 @@ struct Config
           videoEncodeBitrate(2000),
           h264PacketizationMode_(1),
           h264Profile_("constrained-baseline"),
+          h264KeyframeInterval_(60),
           audio_(true),
           video_(true),
           bypass_audio_(false),
@@ -72,6 +73,9 @@ struct Config
         result.append("h264Profile: ");
         result.append(h264Profile_);
         result.append("\n");
+        result.append("h264KeyframeInterval: ");
+        result.append(std::to_string(h264KeyframeInterval_));
+        result.append(" frames\n");
         result.append("showTimer: ");
         result.append(showTimer_ ? "true" : "false");
         result.append("\n");
@@ -128,6 +132,7 @@ struct Config
     uint32_t videoEncodeBitrate;
     uint32_t h264PacketizationMode_;
     std::string h264Profile_;
+    uint32_t h264KeyframeInterval_;
 
     bool audio_;
     bool video_;
