@@ -24,6 +24,7 @@ enum : int
     OPT_VP8,
     OPT_H264_PACKETIZATION_MODE,
     OPT_H264_PROFILE,
+    OPT_H264_KEYFRAME_INTERVAL,
 };
 
 ::option longOptions[] = {{"udpSourceAddress", required_argument, nullptr, 'a'},
@@ -48,6 +49,7 @@ enum : int
     {"vp8", no_argument, nullptr, OPT_VP8},
     {"h264PacketizationMode", required_argument, nullptr, OPT_H264_PACKETIZATION_MODE},
     {"h264Profile", required_argument, nullptr, OPT_H264_PROFILE},
+    {"h264KeyframeInterval", required_argument, nullptr, OPT_H264_KEYFRAME_INTERVAL},
     {nullptr, no_argument, nullptr, 0}};
 
 const auto shortOptions = "a:p:u:k:d:r:o:b:m:ts";
@@ -74,7 +76,8 @@ const char* usageString = "Usage: whip-mpegts [OPTION]\n"
                           "  --ignore-pcr (can also use IGNORE_PCR env var)\n"
                           "  --vp8 (encode video as VP8 instead of H264)\n"
                           "  --h264PacketizationMode INT (H264 RTP packetization-mode, 0 or 1, default=1)\n"
-                          "  --h264Profile STRING (H264 encoder profile, default=constrained-baseline)\n";
+                          "  --h264Profile STRING (H264 encoder profile, default=constrained-baseline)\n"
+                          "  --h264KeyframeInterval INT (x264enc key-int-max in frames, default=60)\n";
 
 GMainLoop* mainLoop = nullptr;
 std::unique_ptr<Pipeline> pipeline;
@@ -186,6 +189,9 @@ int32_t main(int32_t argc, char** argv)
             break;
         case OPT_H264_PROFILE:
             config.h264Profile_ = optarg;
+            break;
+        case OPT_H264_KEYFRAME_INTERVAL:
+            config.h264KeyframeInterval_ = std::strtoul(optarg, nullptr, 10);
             break;
         default:
             break;
