@@ -23,6 +23,7 @@ struct Config
           srtSourceLatency_(125),
           videoEncodeBitrate(2000),
           h264PacketizationMode_(1),
+          h264Profile_("constrained-baseline"),
           audio_(true),
           video_(true),
           bypass_audio_(false),
@@ -67,6 +68,9 @@ struct Config
         result.append("\n");
         result.append("h264PacketizationMode: ");
         result.append(std::to_string(h264PacketizationMode_));
+        result.append("\n");
+        result.append("h264Profile: ");
+        result.append(h264Profile_);
         result.append("\n");
         result.append("showTimer: ");
         result.append(showTimer_ ? "true" : "false");
@@ -123,6 +127,7 @@ struct Config
     uint32_t srtSourceLatency_;
     uint32_t videoEncodeBitrate;
     uint32_t h264PacketizationMode_;
+    std::string h264Profile_;
 
     bool audio_;
     bool video_;

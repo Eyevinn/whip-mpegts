@@ -32,6 +32,7 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
     makeElement(ElementLabel::MPEG2_DECODE, "avdec_mpeg2video");
 
     makeElement(ElementLabel::RTP_VIDEO_ENCODE, config.vp8_ ? "vp8enc" : "x264enc");
+    makeElement(ElementLabel::RTP_VIDEO_ENCODE_CAPS, "capsfilter");
     makeElement(ElementLabel::RTP_VIDEO_PAYLOAD, config.vp8_ ? "rtpvp8pay" : "rtph264pay");
     makeElement(ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE, "queue");
     makeElement(ElementLabel::RTP_VIDEO_FILTER, "capsfilter");
@@ -99,6 +100,13 @@ Pipeline::Pipeline(http::WhipClient& whipClient, const Config& config) : whipCli
             "speed-preset",
             1, // ultrafast
             nullptr);
+
+        // Pin the encoded H264 profile via caps on the encoder src, mirroring the
+        // "x264enc ! video/x-h264, profile=..." pattern in the README gst-launch examples.
+        // Only affects the transcode path; the --bypass-video path never touches x264enc.
+        utils::ScopedGstObject encodeCaps(
+            gst_caps_new_simple("video/x-h264", "profile", G_TYPE_STRING, config.h264Profile_.c_str(), nullptr));
+        g_object_set(elements_[ElementLabel::RTP_VIDEO_ENCODE_CAPS], "caps", encodeCaps.get(), nullptr);
     }
 
     if (config.audio_)
@@ -451,6 +459,7 @@ void Pipeline::onH264SinkPadAdded(GstPad* newPad)
         if (!gst_element_link_many(lastElement,
                 elements_[ElementLabel::VIDEO_CONVERT],
                 elements_[ElementLabel::RTP_VIDEO_ENCODE],
+                elements_[ElementLabel::RTP_VIDEO_ENCODE_CAPS],
                 elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
                 elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
                 nullptr))
@@ -489,6 +498,7 @@ void Pipeline::onH265SinkPadAdded(GstPad* newPad)
     if (!gst_element_link_many(lastElement,
             elements_[ElementLabel::VIDEO_CONVERT],
             elements_[ElementLabel::RTP_VIDEO_ENCODE],
+            elements_[ElementLabel::RTP_VIDEO_ENCODE_CAPS],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
             nullptr))
@@ -518,6 +528,7 @@ void Pipeline::onMpeg2SinkPadAdded(GstPad* newPad)
             elements_[ElementLabel::MPEG2_DECODE],
             elements_[ElementLabel::VIDEO_CONVERT],
             elements_[ElementLabel::RTP_VIDEO_ENCODE],
+            elements_[ElementLabel::RTP_VIDEO_ENCODE_CAPS],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD],
             elements_[ElementLabel::RTP_VIDEO_PAYLOAD_QUEUE],
             nullptr))

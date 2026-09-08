@@ -39,6 +39,7 @@ Usage: whip-mpegts [OPTION]
   --bypass-video
   --vp8
   --h264PacketizationMode INT (0 or 1, default=1)
+  --h264Profile STRING (default=constrained-baseline)
 ```
 
 Flags:
@@ -89,6 +90,17 @@ transcode path and the `--bypass-video` passthrough path. Valid values are `0` (
 non-interleaved without aggregation) and `1` (non-interleaved, allowing STAP-A/FU-A). The default
 is `1`, which preserves the previous behaviour. The flag has no effect when encoding VP8
 (`--vp8`), which has no packetization-mode.
+
+### H264 encoder profile
+
+`--h264Profile STRING` pins the H264 profile of the transcoded output so it matches what the
+receiving SFU is configured for. It is enforced via a caps constraint on the `x264enc` src
+(`video/x-h264, profile=<value>`), mirroring the `x264enc ! video/x-h264, profile=...` pattern in
+the gst-launch examples below. The default is `constrained-baseline`, and existing behaviour is
+unchanged when the flag is omitted. Typical values are `constrained-baseline`, `baseline`, `main`,
+and `high`. This only affects the **transcode** path: with `--bypass-video` the incoming H264 is
+forwarded unchanged and its profile is the upstream encoder's responsibility, and with `--vp8` the
+flag has no effect (VP8 has no H264 profile).
 
 ### How it works
 
