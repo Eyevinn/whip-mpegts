@@ -41,6 +41,7 @@ Usage: whip-mpegts [OPTION]
   --h264PacketizationMode INT (0 or 1, default=1)
   --h264Profile STRING (default=constrained-baseline)
   --h264KeyframeInterval INT (frames, default=60)
+  --congestion-control (enable sender-side GCC dynamic bitrate; no effect with --bypass-video)
 ```
 
 Flags:
@@ -51,6 +52,7 @@ Flags:
 - \--bypass-video Skip video transcoding (no decode/encode). Only works when the input video is already H264. Cannot be combined with `--vp8`.
 - \--bypass-audio Skip audio transcoding (no decode/encode). Only works when the input audio is already OPUS.
 - \--vp8 Encode video as VP8 instead of H264 (cannot be combined with `--bypass-video`).
+- \--congestion-control Enable sender-side dynamic bitrate: drive the video encoder from the GCC bandwidth estimate (see [Bandwidth estimation](#bandwidth-estimation-experimental)). Off by default. No effect with `--bypass-video` (there is no encoder to re-target).
 
 ### Recommended input codecs
 
@@ -217,18 +219,32 @@ source encoder, since on the bypass path this tool forwards them unchanged.
 
 ## Bandwidth estimation (experimental)
 
-When the send path negotiates transport-wide congestion control (TWCC), `whip-mpegts` can attach a
-Google Congestion Control (GCC) bandwidth estimator to the outgoing `webrtcbin` for the **video**
-track. The estimator (`rtpgccbwe`) consumes the TWCC feedback returned by the receiver and produces
-a continuously updated estimate of the available uplink bitrate. The estimator is seeded from the
-configured video bitrate (`-b, --h264EncodeBitrate`): minimum = 10% of the target, start = the
-target, maximum = the target (all in bits per second).
+Sender-side congestion control is **opt-in** via `--congestion-control` and is **off by default**.
+With the flag off, the encoder runs at the static `-b, --h264EncodeBitrate` target and nothing
+below applies — behaviour is unchanged.
 
-At this stage the estimate is only **logged** (throttled to about once per second) so the loop can
-be observed; it does **not** yet change the encoder bitrate — reacting to the estimate is tracked
-separately. The estimator is attached only when the `rtpgccbwe` element is present in the GStreamer
-installation; if it is missing, bandwidth estimation is skipped and behaviour is unchanged. It
-applies to the video transceiver only; the Opus audio track is out of scope.
+When enabled, and when the send path negotiates transport-wide congestion control (TWCC),
+`whip-mpegts` attaches a Google Congestion Control (GCC) bandwidth estimator to the outgoing
+`webrtcbin` for the **video** track. The estimator (`rtpgccbwe`) consumes the TWCC feedback
+returned by the receiver and produces a continuously updated estimate of the available uplink
+bitrate. The estimator is seeded from the configured video bitrate (`-b, --h264EncodeBitrate`):
+minimum = 10% of the target, start = the target, maximum = the target (all in bits per second).
+
+Each estimate update is applied to the video encoder's target bitrate. The estimate is **clamped**
+to `[10% of target, target]` so it never starves or overshoots the configured target, and updates
+are **rate-limited** to at most once per second (also skipping sub-2% changes) so the encoder is
+not thrashed by the continuously updating estimate. The unit difference between the two encoders is
+respected: it is written to `x264enc`'s `bitrate` property in **kb/s**, and to `vp8enc`'s
+`target-bitrate` property in **bits per second** (`--vp8`). The property write happens directly
+from the estimator's streaming-thread notification; this is safe because both encoder bitrate
+properties are `GST_PARAM_MUTABLE_PLAYING` (changeable at runtime) and GObject property setters are
+themselves thread-safe, so no marshalling to the main loop is needed.
+
+The estimator is attached only when the `rtpgccbwe` element is present in the GStreamer
+installation; if it is missing, congestion control is skipped and behaviour is unchanged. It
+applies to the video transceiver only; the Opus audio track is out of scope. `--congestion-control`
+has **no effect with `--bypass-video`**: the passthrough path has no encoder to re-target, so the
+flag is a documented no-op there (the estimator is not wired up and nothing is changed or crashes).
 
 ## Debugging
 

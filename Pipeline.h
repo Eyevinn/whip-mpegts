@@ -41,10 +41,9 @@ public:
 
     // GCC bandwidth estimator (issue #44): webrtcbin requests an aux sender for each send
     // transport; we return an rtpgccbwe element seeded from the configured video bitrate and
-    // observe its estimate. The estimate is only logged for now (issue #45 will act on it).
-    static GstElement* requestAuxSenderCallback(GstElement* webRtcBin,
-        guint sessionId,
-        gpointer userData);
+    // observe its estimate. When --congestion-control is enabled (issue #45/#46) the estimate is
+    // applied to the video encoder bitrate; otherwise it is only logged.
+    static GstElement* requestAuxSenderCallback(GstElement* webRtcBin, guint sessionId, gpointer userData);
     static void estimatedBitrateNotifyCallback(GstObject* gccBwe, GParamSpec* pspec, gpointer userData);
 
     GstElement* onRequestAuxSender(guint sessionId);
@@ -116,6 +115,17 @@ private:
     // Throttle for the GCC estimated-bitrate log (issue #44). The notify fires on the
     // estimator's streaming thread, so this is only touched from that handler.
     std::chrono::steady_clock::time_point lastEstimateLog_;
+
+    // Dynamic-bitrate application state (issues #45/#46). Only used when
+    // config_.congestionControl_ is set. Bounds are in bits per second and derived from the
+    // configured target the same way the estimator seed is (min = 10% of target, max = target).
+    // lastAppliedBitrate_ and lastBitrateApply_ rate-limit encoder re-targeting so we do not
+    // thrash the encoder. All of these are touched only from the estimator's notify handler
+    // (the streaming thread), so no extra locking is needed.
+    guint minEncoderBitrateBps_ = 0;
+    guint maxEncoderBitrateBps_ = 0;
+    guint lastAppliedBitrateBps_ = 0;
+    std::chrono::steady_clock::time_point lastBitrateApply_;
 
     void makeElement(const ElementLabel elementLabel, const char* element);
     void onH264SinkPadAdded(GstPad* newPad);
